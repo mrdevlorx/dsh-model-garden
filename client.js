@@ -10,9 +10,14 @@
  *    in the column header,
  *  - collapsible provider groups in the default view (state persisted),
  *  - prices from https://models.dev/api.json (same source OpenCode uses);
- *    shown as $input/$output per 1M tokens when known, hidden for local/unknown,
- *  - live per-task cost (real provider usage x current model price) via the
- *    host endpoint `/model-garden/cost`,
+ *    shown as $input/$output per 1M tokens when known. Subscription routes
+ *    (all-zero cost in the catalog) resolve a REFERENCE price from their
+ *    pay-as-you-go provider via PROVIDER_ALIASES (e.g. kimi-for-coding →
+ *    moonshotai, alibaba-tp → alibaba-cn), so plan models still show what
+ *    their tokens would cost; local models stay unpriced by design,
+ *  - live per-task token usage (real provider usage from the session log)
+ *    always shown while the panel is open; multiplied by the (reference)
+ *    price when one is known, via the host endpoint `/model-garden/cost`,
  *  - hover tooltip with description, price, context window and efforts.
  *
  * The seat is a `single` slot with shadowing: registering at priority -1 wins
@@ -185,13 +190,50 @@ window.__ModuleLoader__.load({
     }
     // Provider-id aliases: a DSH route id can differ from the models.dev
     // catalog id (e.g. route "deepseek-official" vs. catalog "deepseek").
-    const PROVIDER_ALIASES = { "deepseek-official": "deepseek" };
+    // Aliases double as REFERENCE-PRICE sources for subscription routes:
+    // models.dev lists plan providers (kimi-for-coding, alibaba-token-plan)
+    // with an all-zero cost, so we fall back to the pay-as-you-go catalog id
+    // to still show what the tokens would cost at API rates.
+    const PROVIDER_ALIASES = {
+      "deepseek-official": "deepseek",
+      "alibaba-tp": "alibaba-cn",
+      "kimi-for-coding": "moonshotai",
+      "oneprovider": "anthropic",
+    };
+    // Model-id rewrites applied when looking up the aliased provider
+    // (e.g. route model "k3" vs. catalog model "kimi-k3").
+    const MODEL_ALIASES = {
+      "kimi-for-coding": {
+        "k3": "kimi-k3",
+        "k3-256k": "kimi-k3",
+        "k2.7-code": "kimi-k2.7-code",
+        "kimi-for-coding": "kimi-k2.7-code",
+        "kimi-for-coding-highspeed": "kimi-k2.7-code",
+      },
+    };
+    // Subscription-plan entries carry an all-zero cost in models.dev; treat
+    // them as "no price" so the alias/reference fallback below kicks in.
+    function zeroCost(e) {
+      return !!e && (e.input || 0) === 0 && (e.output || 0) === 0 &&
+        (e.cacheRead || 0) === 0 && (e.cacheWrite || 0) === 0;
+    }
     function priceFor(provider, model) {
       if (!priceMap) return undefined;
       const direct = priceMap["" + provider + "::" + model];
-      if (direct) return direct;
+      if (direct && !zeroCost(direct)) return direct;
       const alias = PROVIDER_ALIASES[provider];
-      return alias ? priceMap[alias + "::" + model] || undefined : undefined;
+      if (alias) {
+        const am = MODEL_ALIASES[provider] && MODEL_ALIASES[provider][model];
+        const ref = (am ? priceMap[alias + "::" + am] : undefined) || priceMap[alias + "::" + model];
+        if (ref && !zeroCost(ref)) return ref;
+      }
+      return undefined;
+    }
+    // True when models.dev knows the model but lists an all-zero cost, i.e.
+    // the route is a subscription/plan product without per-token pricing.
+    function subscriptionFor(provider, model) {
+      if (!priceMap) return false;
+      return zeroCost(priceMap["" + provider + "::" + model]);
     }
     function formatPrice(c) {
       if (!c) return "";
@@ -560,7 +602,8 @@ window.__ModuleLoader__.load({
             const isCurrent = current !== null && g.id === current.provider && m.id === current.model;
             const fav = hasFav(g.id, m.id);
             const entry = priceFor(g.id, m.id);
-            const ptxt = formatPrice(entry);
+            const ptxt = entry ? formatPrice(entry)
+              : (subscriptionFor(g.id, m.id) ? "sub" : "");
             const cw = contextFor(g.id, m.id);
             const ctxt = cw === null ? "" : formatTokens(cw);
             return React.createElement("button", {
@@ -667,15 +710,30 @@ window.__ModuleLoader__.load({
                 const label = current === null
                   ? "no model selected"
                   : (current.model || current.provider || "model");
+                // Token usage is ALWAYS shown once the session has traffic;
+                // the cost figure depends on a (reference) price being known.
+                const detail = formatTokens(cc.inputTokens) + " in / " + formatTokens(cc.outputTokens) + " out" +
+                  ((cc.cacheReadTokens + cc.cacheWriteTokens) > 0
+                    ? " · " + formatTokens(cc.cacheReadTokens + cc.cacheWriteTokens) + " cache"
+                    : "");
+                if (!cc.hasPrice) {
+                  const note = current !== null && localFor(current.provider, current.model)
+                    ? "local model → no API cost"
+                    : (current !== null && subscriptionFor(current.provider, current.model)
+                      ? "subscription → no per-token price"
+                      : "no price data");
+                  return React.createElement("div", { className: "mg-cost" },
+                    React.createElement("span", null, note,
+                      React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
+                    )
+                  );
+                }
                 const line = "approx cost: " + formatMoney(cc.total);
-                const detail = formatTokens(cc.inputTokens) + " in / " + formatTokens(cc.outputTokens) + " out";
                 return React.createElement("div", { className: "mg-cost" },
-                  !cc.hasPrice
-                    ? React.createElement("span", null, "local model → no API cost (" + label + ")")
-                    : React.createElement("span", null,
-                        line,
-                        React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
-                      )
+                  React.createElement("span", null,
+                    line,
+                    React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
+                  )
                 );
               })(),
               filtered.length === 0 && !(status === "loading") && React.createElement("div", { className: "mg-empty" },
@@ -734,6 +792,9 @@ window.__ModuleLoader__.load({
                   const mo = maxOutputFor(tip.g.id, tip.m.id);
                   const rows = [];
                   if (ptxt !== "") rows.push(React.createElement("div", { key: "p", className: "mg-tt-row" }, "Price: " + ptxt + " / 1M tokens"));
+                  else if (subscriptionFor(tip.g.id, tip.m.id)) {
+                    rows.push(React.createElement("div", { key: "p", className: "mg-tt-row" }, "Price: subscription plan (no per-token price)"));
+                  }
                   if (cw !== null) {
                     rows.push(React.createElement("div", { key: "c", className: "mg-tt-row" },
                       "Context: " + formatTokens(cw) +

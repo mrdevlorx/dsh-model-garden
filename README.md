@@ -13,9 +13,9 @@ A searchable, sortable **model picker** for the [DeepSeek Harness](https://githu
 - **⭐ Favorites** — star models, toggle favorites-only from the table header; persisted in `localStorage`
 - **🏠 Local tag** — providers are flagged *local* by their real endpoint (baseURL from settings: loopback / RFC1918 / LAN hostnames), never by price guesswork; the **Local** box next to the search input filters to them
 - **▾ Collapsible provider groups** — collapse state is persisted per provider
-- **💰 Model prices** from [models.dev](https://models.dev) (the same source OpenCode uses), shown as `$input/$output` per 1M tokens, cached for 24 h
+- **💰 Model prices** from [models.dev](https://models.dev) (the same source OpenCode uses), shown as `$input/$output` per 1M tokens, cached for 24 h. **Subscription routes** (all-zero cost in the catalog, e.g. coding-plan providers) resolve a *reference price* from their pay-as-you-go provider via `PROVIDER_ALIASES`, so plan models still show what their tokens would cost at API rates; only true **local** models stay unpriced
 - **🧠 Context windows** — read live from the host `llm` service (adapter-owned data, works for **local** providers like llama.cpp / Ollama-style gateways too), with models.dev as fallback
-- **💸 Live per-task cost** — real provider-reported token usage (from the session log) × current model price, refreshed while the panel is open — the same math OpenCode uses (`usage × price`, not a heuristic)
+- **💸 Live per-task usage & cost** — real provider-reported token usage (from the session log) is **always shown** while the panel is open (`in / out / cache`), multiplied by the (reference) price when one is known — the same math OpenCode uses (`usage × price`, not a heuristic)
 - **🖱️ Detail tooltip** that opens *beside* the panel (never covers the list): description, price, context window, max output, reasoning efforts
 - **🎨 Native look** — built entirely on the harness design tokens (`--dsw-alias-*`), matches light & dark theme automatically
 
@@ -70,6 +70,7 @@ If you manage the profile with plain npm: add the dependency, list `dsh-model-ga
 No configuration is required. Two behaviors can be adjusted at the top of the respective file:
 
 - **Hidden provider routes** — `HIDDEN_PROVIDER_PREFIXES` in `client.js` (and `SKIP_PREFIXES` in `index.js`). Some plugins mirror providers as internal routes (e.g. a vision toolkit duplicating every provider as `vision-toolkit-<id>`); such prefixes are excluded from the picker and the catalog.
+- **Price aliases** — `PROVIDER_ALIASES` / `MODEL_ALIASES` in `client.js` map DSH route ids to models.dev catalog ids. They serve two cases: renamed routes (`deepseek-official` → `deepseek`) and subscription routes whose catalog entry is all-zero (`kimi-for-coding` → `moonshotai`, `alibaba-tp` → `alibaba-cn`, `oneprovider` → `anthropic`), giving plan models their pay-as-you-go reference price.
 - **Price cache TTL** — `PRICE_TTL` (default 24 h) and **catalog TTL** — `CATALOG_TTL` (default 10 min).
 
 Favorites, collapsed providers and the price cache live in the browser's `localStorage` under `dsh.modelgarden.*`.
