@@ -24,7 +24,7 @@
  * picker matches light and dark theme automatically.
  */
 window.__ModuleLoader__.load({
-  id: "model-garden",
+  id: "dsh-model-garden",
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;

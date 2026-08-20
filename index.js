@@ -17,12 +17,13 @@
  *
  * @module model-garden
  */
-export const name = 'model-garden'
-// Hard dependencies: cordis parks this fiber until the services exist.
-// Without the declaration apply() could run before the webserver provided
-// itself, so ctx.get('webServer') returned undefined and the routes were
-// silently never registered.
-export const inject = ['webServer', 'sessions', 'settings']
+export const name = 'dsh-model-garden'
+// Deliberately NO hard inject: profiles without a web stack (minimal or TUI
+// profiles) never provide `webServer`, and a hard inject would park this
+// fiber forever — dsh-app-boot fails the WHOLE boot when an entry never
+// activates. Instead we mount immediately and (re)try route registration as
+// services appear (see apply below). Services are read lazily via ctx.get().
+export const inject = []
 
 /**
  * Provider locality from the configured baseURL (`llm-pi-ai` settings
@@ -186,39 +187,57 @@ async function getCatalog(llm, settings) {
 /**
  * Host apply: register the live-cost and catalog routes. Kept minimal and
  * side-effect free otherwise; disposable via ctx.effect.
+ *
+ * Timing: this fiber can mount before the web stack provides `webServer`.
+ * Rather than blocking boot on a hard inject (which minimal profiles never
+ * satisfy), we retry on every `internal/service` event until the routes are
+ * registered once. In profiles without any web stack the plugin simply
+ * stays inert.
+ *
  * @param ctx - host cordis context.
  */
 export function apply(ctx) {
-  const webServer = ctx.get('webServer')
-  if (webServer === undefined) return
-  ctx.effect(() => webServer.register({
-    kind: 'exact',
-    path: '/model-garden/cost',
-    handler: (req, res) => {
-      const url = new URL(req.url ?? '', 'http://127.0.0.1')
-      const sessionId = url.searchParams.get('session')
-      if (!sessionId) return writeJson(res, 400, { error: 'missing session' })
-      const sessions = ctx.get('sessions')
-      const session = sessions === undefined ? undefined : sessions.get(sessionId)
-      if (!session) return writeJson(res, 404, { error: 'session not found' })
-      try {
-        const events = session.events !== undefined ? session.events : []
-        const usage = aggregateUsage(events)
-        writeJson(res, 200, usage)
-      } catch (err) {
-        writeJson(res, 500, { error: String(err && err.message ? err.message : err) })
-      }
-    },
-  }), 'model-garden: /model-garden/cost route')
-  ctx.effect(() => webServer.register({
-    kind: 'exact',
-    path: '/model-garden/catalog',
-    handler: (req, res) => {
-      const llm = ctx.get('llm')
-      if (llm === undefined) return writeJson(res, 503, { error: 'llm service unavailable' })
-      getCatalog(llm, ctx.get('settings'))
-        .then((map) => writeJson(res, 200, map))
-        .catch((err) => writeJson(res, 500, { error: String(err && err.message ? err.message : err) }))
-    },
-  }), 'model-garden: /model-garden/catalog route')
+  let mounted = false
+  const mount = () => {
+    if (mounted) return
+    const webServer = ctx.get('webServer')
+    if (webServer === undefined) return
+    mounted = true
+    ctx.effect(() => webServer.register({
+      kind: 'exact',
+      path: '/model-garden/cost',
+      handler: (req, res) => {
+        const url = new URL(req.url ?? '', 'http://127.0.0.1')
+        const sessionId = url.searchParams.get('session')
+        if (!sessionId) return writeJson(res, 400, { error: 'missing session' })
+        const sessions = ctx.get('sessions')
+        const session = sessions === undefined ? undefined : sessions.get(sessionId)
+        if (!session) return writeJson(res, 404, { error: 'session not found' })
+        try {
+          const events = session.events !== undefined ? session.events : []
+          const usage = aggregateUsage(events)
+          writeJson(res, 200, usage)
+        } catch (err) {
+          writeJson(res, 500, { error: String(err && err.message ? err.message : err) })
+        }
+      },
+    }), 'model-garden: /model-garden/cost route')
+    ctx.effect(() => webServer.register({
+      kind: 'exact',
+      path: '/model-garden/catalog',
+      handler: (req, res) => {
+        const llm = ctx.get('llm')
+        if (llm === undefined) return writeJson(res, 503, { error: 'llm service unavailable' })
+        getCatalog(llm, ctx.get('settings'))
+          .then((map) => writeJson(res, 200, map))
+          .catch((err) => writeJson(res, 500, { error: String(err && err.message ? err.message : err) }))
+      },
+    }), 'model-garden: /model-garden/catalog route')
+  }
+  mount()
+  // `internal/service` fires whenever any service is provided; the listener
+  // is fiber-scoped and disappears with the plugin.
+  ctx.on('internal/service', (name) => {
+    if (name === 'webServer') mount()
+  })
 }

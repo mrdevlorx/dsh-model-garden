@@ -2,7 +2,7 @@
 
 A searchable, sortable **model picker** for the [DeepSeek Harness](https://github.com/deepseek-ai) Web UI (`dsh web`). It replaces the native composer model seat with a table-style picker that adds everything the stock selector is missing:
 
-![status](https://img.shields.io/badge/status-stable-brightgreen) ![license](https://img.shields.io/badge/license-MIT-blue)
+![status](https://img.shields.io/badge/status-stable-brightgreen) [![npm](https://img.shields.io/npm/v/dsh-model-garden)](https://www.npmjs.com/package/dsh-model-garden) ![license](https://img.shields.io/badge/license-MIT-blue)
 
 ![Model Garden in action](docs/model-garden.png)
 
@@ -35,7 +35,7 @@ GET /model-garden/cost?session=<sessionId>
   → { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens, steps }
 
 GET /model-garden/catalog
-  → { "provider::model": { context?, maxOutput? } }   (cached 10 min)
+  → { "provider::model": { local, context?, maxOutput? } }   (cached 10 min)
 ```
 
 The cost endpoint aggregates the real `usage` payloads of `assistant/message` events from the durable session log — no estimation. The catalog endpoint resolves `contextWindow` / `defaultMaxTokens` per model through the host `llm` service (`resolveModelInfo`), so local/self-hosted providers report their real limits.
@@ -49,6 +49,8 @@ dsh plugin --profile <profile> add dsh-model-garden
 ```
 
 Then restart the DSH server and hard-refresh the browser (`Cmd/Ctrl+Shift+R`).
+
+> The host half needs the web stack (`webServer` service). In minimal/TUI profiles without it the plugin stays inert by design — boot is never blocked.
 
 > Upgrading from a manual install? Remove the old `model-garden` dependency and any manual `- insert:` row for it from your profile's `cordis.patch.yml` first — otherwise the plugin mounts twice.
 
