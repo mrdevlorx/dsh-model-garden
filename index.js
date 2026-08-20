@@ -86,7 +86,11 @@ function aggregateUsage(events) {
   if (Array.isArray(events)) {
     for (const ev of events) {
       if (!ev || ev.type !== 'assistant/message') continue
-      const usage = ev.usage
+      // Durable log events are enveloped: { type, seq, time, data: { usage } }.
+      // Accept both the envelope and a flat { usage } shape.
+      const usage = ev.usage !== undefined
+        ? ev.usage
+        : (ev.data && typeof ev.data === 'object' ? ev.data.usage : undefined)
       if (!usage || typeof usage !== 'object') continue
       steps += 1
       inputTokens += typeof usage.inputTokens === 'number' ? usage.inputTokens : 0
