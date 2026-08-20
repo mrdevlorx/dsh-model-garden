@@ -152,7 +152,7 @@ window.__ModuleLoader__.load({
     }
 
     // ---- Prices from https://models.dev/api.json (OpenCode's source) ----
-    // Local models (ki-server / llama.cpp / local opencode-go) are NOT in the
+    // Local models (e.g. llama.cpp / Ollama-style gateways) are NOT in the
     // public catalog, so they get no price; hosted providers (openrouter,
     // deepseek, openai, ...) show $input/$output per 1M tokens.
     const PRICE_KEY = "dsh.modelgarden.prices";
@@ -174,9 +174,15 @@ window.__ModuleLoader__.load({
     function cacheFresh(c) {
       return !!c && (Date.now() - c.at) < PRICE_TTL;
     }
+    // Provider-id aliases: a DSH route id can differ from the models.dev
+    // catalog id (e.g. route "deepseek-official" vs. catalog "deepseek").
+    const PROVIDER_ALIASES = { "deepseek-official": "deepseek" };
     function priceFor(provider, model) {
       if (!priceMap) return undefined;
-      return priceMap["" + provider + "::" + model] || undefined;
+      const direct = priceMap["" + provider + "::" + model];
+      if (direct) return direct;
+      const alias = PROVIDER_ALIASES[provider];
+      return alias ? priceMap[alias + "::" + model] || undefined : undefined;
     }
     function formatPrice(c) {
       if (!c) return "";
@@ -282,7 +288,7 @@ window.__ModuleLoader__.load({
     })();
 
     // ---- Capability catalog from the host (same-origin, adapter-owned data) ----
-    // Covers LOCAL providers too (ki-server / llama.cpp / opencode-go), which
+    // Covers LOCAL providers too (llama.cpp / Ollama-style gateways), which
     // models.dev does not know. The host caches the build; the client keeps it
     // in memory for the page lifetime.
     let catalogMap = null; // { "provider::model": { context?, maxOutput? } }
