@@ -30,6 +30,10 @@ window.__ModuleLoader__.load({
     var exports = module.exports;
     Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
     let React = require("react");
+    // react-dom is available in the harness module system (used for the
+    // tooltip portal); if it ever is not, the tooltip falls back to inline.
+    let ReactDOM = null;
+    try { ReactDOM = require("react-dom"); } catch { ReactDOM = null; }
 
     // ---- static CSS (guarded, idempotent across hot reloads) ----
     const CSS_ID = "model-garden";
@@ -91,8 +95,10 @@ window.__ModuleLoader__.load({
         ".mg-error { margin: 4px 8px 0; padding: 7px 8px; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; }",
         ".mg-cost { padding: 6px 10px; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-business-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
         ".mg-cost-detail { color: var(--dsw-alias-label-tertiary); }",
-        // Tooltip — harness tooltip surface (dark in both themes).
-        ".mg-tooltip { position: fixed; z-index: 60; min-width: 200px; max-width: 320px; padding: 9px 11px; border-radius: 10px; background: var(--dsw-alias-tooltip-bg); box-shadow: var(--dsw-shadow-lv2); pointer-events: none; font-size: 12px; line-height: 18px; color: var(--dsw-static-neutral-bluish-50); }",
+        // Tooltip — harness tooltip surface (dark in both themes). Rendered
+        // through a body portal (see below), so it must win against every app
+        // stacking context: z-index well above panels/menus.
+        ".mg-tooltip { position: fixed; z-index: 1000; min-width: 200px; max-width: 320px; padding: 9px 11px; border-radius: 10px; background: var(--dsw-alias-tooltip-bg); box-shadow: var(--dsw-shadow-lv2); pointer-events: none; font-size: 12px; line-height: 18px; color: var(--dsw-static-neutral-bluish-50); }",
         ".mg-tt-name { font-size: 13px; font-weight: 600; line-height: 20px; margin-bottom: 2px; }",
         ".mg-tt-prov { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-static-deepseek-300); margin-bottom: 5px; }",
         ".mg-tt-id { font-family: var(--ds-font-family-code); font-size: 10.5px; color: var(--dsw-static-neutral-bluish-300); margin: 2px 0 5px; word-break: break-all; }",
@@ -678,39 +684,51 @@ window.__ModuleLoader__.load({
                 React.createElement("span", null, "prices: models.dev")
               )
             ),
-            tip && !locked && React.createElement("div", {
-              className: "mg-tooltip",
-              style: { left: tip.left, top: tip.top },
-            },
-              React.createElement("div", { className: "mg-tt-name" }, tip.m.name || tip.m.id),
-              React.createElement("div", { className: "mg-tt-prov" }, tip.g.name || tip.g.id),
-              tip.m.id !== tip.m.name && React.createElement("div", { className: "mg-tt-id" }, tip.m.id),
-              tip.m.description && React.createElement("div", { className: "mg-tt-desc" }, tip.m.description),
-              (function () {
-                const entry = priceFor(tip.g.id, tip.m.id);
-                const ptxt = formatPrice(entry);
-                const cw = contextFor(tip.g.id, tip.m.id);
-                const mo = maxOutputFor(tip.g.id, tip.m.id);
-                const rows = [];
-                if (ptxt !== "") rows.push(React.createElement("div", { key: "p", className: "mg-tt-row" }, "Price: " + ptxt + " / 1M tokens"));
-                if (cw !== null) {
-                  rows.push(React.createElement("div", { key: "c", className: "mg-tt-row" },
-                    "Context: " + formatTokens(cw) +
-                    (mo !== null ? " · Max output: " + formatTokens(mo) : "")
-                  ));
-                }
-                if (tip.m.reasoning && tip.m.reasoning.efforts && tip.m.reasoning.efforts.length) {
-                  rows.push(React.createElement("div", { key: "r", className: "mg-tt-row" },
-                    "Efforts: " + tip.m.reasoning.efforts.map((ef) => ef.name || ef.id).join(", ")
-                  ));
-                }
-                return rows;
-              })(),
-              React.createElement("div", { className: "mg-tt-meta" },
-                React.createElement("span", null, "Provider: " + tip.g.id),
-                React.createElement("span", null, "Local: " + (priceFor(tip.g.id, tip.m.id) ? "no" : "yes"))
-              )
-            )
+            (function () {
+              if (!tip || locked) return null;
+              const tipEl = React.createElement("div", {
+                className: "mg-tooltip",
+                style: { left: tip.left, top: tip.top },
+              },
+                React.createElement("div", { className: "mg-tt-name" }, tip.m.name || tip.m.id),
+                React.createElement("div", { className: "mg-tt-prov" }, tip.g.name || tip.g.id),
+                tip.m.id !== tip.m.name && React.createElement("div", { className: "mg-tt-id" }, tip.m.id),
+                tip.m.description && React.createElement("div", { className: "mg-tt-desc" }, tip.m.description),
+                (function () {
+                  const entry = priceFor(tip.g.id, tip.m.id);
+                  const ptxt = formatPrice(entry);
+                  const cw = contextFor(tip.g.id, tip.m.id);
+                  const mo = maxOutputFor(tip.g.id, tip.m.id);
+                  const rows = [];
+                  if (ptxt !== "") rows.push(React.createElement("div", { key: "p", className: "mg-tt-row" }, "Price: " + ptxt + " / 1M tokens"));
+                  if (cw !== null) {
+                    rows.push(React.createElement("div", { key: "c", className: "mg-tt-row" },
+                      "Context: " + formatTokens(cw) +
+                      (mo !== null ? " · Max output: " + formatTokens(mo) : "")
+                    ));
+                  }
+                  if (tip.m.reasoning && tip.m.reasoning.efforts && tip.m.reasoning.efforts.length) {
+                    rows.push(React.createElement("div", { key: "r", className: "mg-tt-row" },
+                      "Efforts: " + tip.m.reasoning.efforts.map((ef) => ef.name || ef.id).join(", ")
+                    ));
+                  }
+                  return rows;
+                })(),
+                React.createElement("div", { className: "mg-tt-meta" },
+                  React.createElement("span", null, "Provider: " + tip.g.id),
+                  React.createElement("span", null, "Local: " + (priceFor(tip.g.id, tip.m.id) ? "no" : "yes"))
+                )
+              );
+              // Portal to <body>: the composer creates its own stacking
+              // context, so an inline fixed tooltip loses against the chat
+              // history no matter the z-index. Through the portal the
+              // tooltip always floats above everything; it still closes on
+              // mouse-leave / picker close like before.
+              if (ReactDOM && typeof document !== "undefined" && document.body) {
+                return ReactDOM.createPortal(tipEl, document.body);
+              }
+              return tipEl;
+            })()
           );
         }
       ));
