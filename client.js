@@ -691,10 +691,10 @@ window.__ModuleLoader__.load({
             (function () {
               if (!tip || locked) return null;
               const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
-              // left-anchored: right edge flush against the panel's left edge
+              // left-anchored: right edge flush against the panel's left edge (1px seam)
               const tipStyle = tip.side === "left"
-                ? { right: Math.max(8, vw - tip.panelLeft + 8), top: tip.top }
-                : { left: Math.min(tip.panelRight + 8, Math.max(8, vw - 340)), top: tip.top };
+                ? { right: Math.max(1, vw - tip.panelLeft + 1), top: tip.top }
+                : { left: Math.min(tip.panelRight + 1, Math.max(8, vw - 340)), top: tip.top };
               const tipEl = React.createElement("div", {
                 className: "mg-tooltip",
                 style: tipStyle,
