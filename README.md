@@ -42,47 +42,26 @@ The cost endpoint aggregates the real `usage` payloads of `assistant/message` ev
 
 ## Installation
 
-Model Garden mounts into a **DSH profile** (e.g. `~/.dsh/profiles/<your-profile>`).
+One command — the official plugin CLI installs the package **and** mounts it (the package carries a `dsh.bundle.patch` layer, so the CLI automatically appends it to the profile's bundle stack):
 
-1. **Copy the plugin into your profile:**
+```sh
+dsh plugin --profile <profile> add dsh-model-garden
+```
 
-   ```bash
-   mkdir -p ~/.dsh/profiles/<profile>/plugins/model-garden
-   cp index.js client.js package.json ~/.dsh/profiles/<profile>/plugins/model-garden/
-   ```
+Then restart the DSH server and hard-refresh the browser (`Cmd/Ctrl+Shift+R`).
 
-   (Or publish/consume via any `file:` path you prefer.)
-
-2. **Add the dependency** to `~/.dsh/profiles/<profile>/package.json`:
-
-   ```json
-   {
-     "dependencies": {
-       "model-garden": "file:plugins/model-garden"
-     }
-   }
-   ```
-
-   then `npm install --legacy-peer-deps` inside the profile directory.
-
-   > ⚠️ Do **not** add it to `dsh.profile.bundles` — it is a plain client plugin (`dsh.client.platform: "web"`), not a patch bundle.
-
-3. **Register the loader row** in `~/.dsh/profiles/<profile>/cordis.patch.yml`:
-
-   ```yaml
-   - insert:
-       - id: model-garden
-         name: 'model-garden'
-   ```
-
-4. **Restart the DSH server** and hard-refresh the browser (`Cmd/Ctrl+Shift+R`). Static client bundles are read at boot, so a restart is required after every upgrade.
+> Upgrading from a manual install? Remove the old `model-garden` dependency and any manual `- insert:` row for it from your profile's `cordis.patch.yml` first — otherwise the plugin mounts twice.
 
 ### Verify
 
 ```bash
 curl -s http://127.0.0.1:3080/model-garden/catalog | head -c 200
-# → {"deepseek::deepseek-chat":{"context":...}, ...}  (JSON, not HTML)
+# → {"deepseek::deepseek-chat":{"local":false,"context":...}, ...}  (JSON, not HTML)
 ```
+
+### Manual install (without the CLI)
+
+If you manage the profile with plain npm: add the dependency, list `dsh-model-garden` in `dsh.profile.bundles` in the profile `package.json`, reinstall, restart. The bundle patch inside the package inserts the loader row for you — no `cordis.patch.yml` edit needed.
 
 ## Configuration
 

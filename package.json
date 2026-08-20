@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-garden",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A searchable, sortable model picker for the DeepSeek Harness Web UI — provider groups, favorites, live per-task cost, prices and context windows.",
   "keywords": [
     "deepseek-harness",
@@ -24,10 +24,14 @@
   "files": [
     "index.js",
     "client.js",
+    "cordis.patch.yml",
     "README.md",
     "LICENSE"
   ],
   "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web"
     }
