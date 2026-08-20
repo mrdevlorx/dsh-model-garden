@@ -18,11 +18,61 @@
  * @module model-garden
  */
 export const name = 'model-garden'
-// Hard dependencies: cordis parks this fiber until both services exist.
+// Hard dependencies: cordis parks this fiber until the services exist.
 // Without the declaration apply() could run before the webserver provided
 // itself, so ctx.get('webServer') returned undefined and the routes were
 // silently never registered.
-export const inject = ['webServer', 'sessions']
+export const inject = ['webServer', 'sessions', 'settings']
+
+/**
+ * Provider locality from the configured baseURL (`llm-pi-ai` settings
+ * section). Providers without an explicit baseURL run on their catalog
+ * default endpoint, i.e. the public cloud — not local.
+ * Local means: loopback, RFC1918/link-local IP, single-label LAN hostname
+ * (e.g. an internal gateway name), or a .local/.lan/.internal-style suffix.
+ */
+function isLocalBaseUrl(url) {
+  if (typeof url !== 'string' || url === '') return false
+  let host
+  try {
+    host = new URL(url).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  if (host === 'localhost' || host === '::1' || host === '[::1]' || host.endsWith('.localhost')) return true
+  if (host.indexOf('.') === -1) return true // single-label LAN name
+  if (/\.(local|lan|internal|home|corp)$/.test(host)) return true
+  const m = host.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/)
+  if (m) {
+    const a = Number(m[1])
+    const b = Number(m[2])
+    if (a === 0 || a === 10 || a === 127) return true
+    if (a === 192 && b === 168) return true
+    if (a === 172 && b >= 16 && b <= 31) return true
+    if (a === 169 && b === 254) return true
+  }
+  return false
+}
+
+/** Read provider -> baseURL from the llm-pi-ai settings section. */
+function providerBaseUrls(settings) {
+  const map = {}
+  if (settings === undefined) return map
+  let section
+  try {
+    section = settings.get('llm-pi-ai')
+  } catch {
+    return map
+  }
+  const providers = section && typeof section === 'object' ? section.providers : undefined
+  if (providers && typeof providers === 'object') {
+    for (const id in providers) {
+      const p = providers[id]
+      if (p && typeof p === 'object' && typeof p.baseURL === 'string') map[id] = p.baseURL
+    }
+  }
+  return map
+}
 
 /** Aggregate real provider usage for one session from its durable events. */
 function aggregateUsage(events) {
@@ -78,16 +128,20 @@ let catalogCache = null
 let catalogAt = 0
 let catalogInflight = null
 
-async function buildCatalog(llm) {
+async function buildCatalog(llm, settings) {
   const out = {}
   // Mirrored internal routes (the vision toolkit duplicates every provider as
   // "vision-toolkit-<provider>" for its own routing) are skipped: they are
   // hidden in the picker, so resolving their ~180 models would be pure waste.
   const SKIP_PREFIXES = ['vision-toolkit-']
+  const baseUrls = providerBaseUrls(settings)
   const providers = llm.listProviders()
   await Promise.all((Array.isArray(providers) ? providers : []).map(async (p) => {
     if (!p || typeof p.id !== 'string') return
     if (SKIP_PREFIXES.some((s) => p.id.indexOf(s) === 0)) return
+    // Provider-level locality: every model entry inherits it, so the client's
+    // "Local" tag/filter reflects the real endpoint, not price availability.
+    const local = isLocalBaseUrl(baseUrls[p.id])
     let models = []
     try {
       models = await llm.listModels(p.id)
@@ -96,25 +150,25 @@ async function buildCatalog(llm) {
     }
     await Promise.all((Array.isArray(models) ? models : []).map(async (m) => {
       if (!m || typeof m.id !== 'string') return
+      const entry = { local }
       try {
         const info = await llm.resolveModelInfo(p.id, m.id)
-        const entry = {}
         const cw = info && info.context && info.context.contextWindow
         if (typeof cw === 'number') entry.context = cw
         if (info && typeof info.defaultMaxTokens === 'number') entry.maxOutput = info.defaultMaxTokens
-        if (Object.keys(entry).length) out[p.id + '::' + m.id] = entry
       } catch {
         // one unresolvable model must not sink the catalog
       }
+      out[p.id + '::' + m.id] = entry
     }))
   }))
   return out
 }
 
-async function getCatalog(llm) {
+async function getCatalog(llm, settings) {
   if (catalogCache !== null && (Date.now() - catalogAt) < CATALOG_TTL) return catalogCache
   if (catalogInflight !== null) return catalogInflight
-  catalogInflight = buildCatalog(llm)
+  catalogInflight = buildCatalog(llm, settings)
     .then((map) => {
       catalogCache = map
       catalogAt = Date.now()
@@ -162,7 +216,7 @@ export function apply(ctx) {
     handler: (req, res) => {
       const llm = ctx.get('llm')
       if (llm === undefined) return writeJson(res, 503, { error: 'llm service unavailable' })
-      getCatalog(llm)
+      getCatalog(llm, ctx.get('settings'))
         .then((map) => writeJson(res, 200, map))
         .catch((err) => writeJson(res, 500, { error: String(err && err.message ? err.message : err) }))
     },

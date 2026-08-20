@@ -331,6 +331,16 @@ window.__ModuleLoader__.load({
       const p = priceMap ? priceMap[key] : undefined;
       return p && typeof p.maxOutput === "number" ? p.maxOutput : null;
     }
+    // "Local" tag: the host catalog knows the provider's real endpoint
+    // (baseURL from settings). Only while no catalog data exists do we fall
+    // back to the old heuristic (no price entry → probably local).
+    function localFor(provider, model) {
+      const key = "" + provider + "::" + model;
+      if (catalogMap && catalogMap[key] && typeof catalogMap[key].local === "boolean") {
+        return catalogMap[key].local;
+      }
+      return priceFor(provider, model) === undefined;
+    }
 
     // Provider routes hidden from the picker: the vision toolkit mirrors every
     // provider as "vision-toolkit-<provider>" for its internal vision routing.
@@ -386,7 +396,7 @@ window.__ModuleLoader__.load({
           const [open, setOpen] = React.useState(false);
           const [query, setQuery] = React.useState("");
           const [favOnly, setFavOnly] = React.useState(false);
-          // localOnly: only models WITHOUT an API price (the "Local: yes" tag)
+          // localOnly: only models tagged "Local: yes" (local endpoint)
           const [localOnly, setLocalOnly] = React.useState(false);
           // Table sorting: null = provider-grouped default view,
           // otherwise flat list sorted by the clicked column.
@@ -413,7 +423,7 @@ window.__ModuleLoader__.load({
               const text = (m.name || m.id || "") + " " + (m.description || "");
               if (q !== "" && text.toLowerCase().indexOf(q) === -1) continue;
               if (favOnly && !hasFav(g.id, m.id)) continue;
-              if (localOnly && priceFor(g.id, m.id) !== undefined) continue;
+              if (localOnly && !localFor(g.id, m.id)) continue;
               filtered.push({ g, m });
             }
           }
@@ -739,7 +749,7 @@ window.__ModuleLoader__.load({
                 })(),
                 React.createElement("div", { className: "mg-tt-meta" },
                   React.createElement("span", null, "Provider: " + tip.g.id),
-                  React.createElement("span", null, "Local: " + (priceFor(tip.g.id, tip.m.id) ? "no" : "yes"))
+                  React.createElement("span", null, "Local: " + (localFor(tip.g.id, tip.m.id) ? "yes" : "no"))
                 )
               );
               // Portal to <body>: the composer creates its own stacking
