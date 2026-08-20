@@ -576,8 +576,11 @@ window.__ModuleLoader__.load({
           }
           // Tooltip opens BESIDE the panel, its RIGHT edge always flush
           // against the panel's LEFT edge (anchored via style.right, so any
-          // tooltip width snaps to the same seam). Falls back to the panel's
-          // right edge on very narrow windows.
+          // tooltip width snaps to the same seam). Never flips over the chat
+          // text: when space left of the panel is tight the tooltip SHRINKS
+          // (maxWidth = available room) instead of switching sides. The
+          // right-edge fallback only fires when there is essentially no
+          // room left of the panel at all (< 180px).
           function showTip(e, g, m) {
             const row = e.currentTarget;
             const r = row.getBoundingClientRect();
@@ -585,10 +588,11 @@ window.__ModuleLoader__.load({
             const pr = panel ? panel.getBoundingClientRect() : r;
             const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
             const vh = typeof window === "undefined" ? 800 : window.innerHeight;
-            const tw = 340; // tooltip max-width + gap
-            const side = pr.left >= tw + 8 ? "left" : "right";
             const top = Math.max(8, Math.min(r.top - 4, vh - 220));
-            setTip({ g, m, panelLeft: pr.left, panelRight: pr.right, side, top });
+            const roomLeft = pr.left - 8; // keep an 8px viewport margin
+            const side = roomLeft >= 180 ? "left" : "right";
+            const maxW = side === "left" ? Math.min(320, Math.floor(roomLeft)) : 320;
+            setTip({ g, m, panelLeft: pr.left, panelRight: pr.right, side, top, maxW });
           }
           function hideTip() {
             setTip(null);
@@ -773,10 +777,14 @@ window.__ModuleLoader__.load({
             (function () {
               if (!tip || locked) return null;
               const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
-              // left-anchored: right edge flush against the panel's left edge (1px seam)
+              // left-anchored: right edge flush against the panel's left edge
+              // (1px seam); maxWidth/minWidth shrink the tooltip to the room
+              // available left of the panel instead of flipping sides.
               const tipStyle = tip.side === "left"
-                ? { right: Math.max(1, vw - tip.panelLeft + 1), top: tip.top }
-                : { left: Math.min(tip.panelRight + 1, Math.max(8, vw - 340)), top: tip.top };
+                ? { right: Math.max(1, vw - tip.panelLeft + 1), top: tip.top,
+                    maxWidth: tip.maxW, minWidth: Math.min(200, tip.maxW) }
+                : { left: Math.min(tip.panelRight + 1, Math.max(8, vw - 340)), top: tip.top,
+                    maxWidth: tip.maxW };
               const tipEl = React.createElement("div", {
                 className: "mg-tooltip",
                 style: tipStyle,
