@@ -516,17 +516,21 @@ window.__ModuleLoader__.load({
             props.select(sel);
             setOpen(false);
           }
-          // Tooltip opens BESIDE the panel (left of it), never over the rows.
-          // Falls back to the panel's right edge on very narrow windows.
+          // Tooltip opens BESIDE the panel, its RIGHT edge always flush
+          // against the panel's LEFT edge (anchored via style.right, so any
+          // tooltip width snaps to the same seam). Falls back to the panel's
+          // right edge on very narrow windows.
           function showTip(e, g, m) {
-            const r = e.currentTarget.getBoundingClientRect();
+            const row = e.currentTarget;
+            const r = row.getBoundingClientRect();
+            const panel = row.closest(".mg-panel");
+            const pr = panel ? panel.getBoundingClientRect() : r;
             const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
             const vh = typeof window === "undefined" ? 800 : window.innerHeight;
             const tw = 340; // tooltip max-width + gap
-            let left = r.left - tw;
-            if (left < 8) left = Math.min(r.right + 8, Math.max(8, vw - tw));
+            const side = pr.left >= tw + 8 ? "left" : "right";
             const top = Math.max(8, Math.min(r.top - 4, vh - 220));
-            setTip({ g, m, left, top });
+            setTip({ g, m, panelLeft: pr.left, panelRight: pr.right, side, top });
           }
           function hideTip() {
             setTip(null);
@@ -686,9 +690,14 @@ window.__ModuleLoader__.load({
             ),
             (function () {
               if (!tip || locked) return null;
+              const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
+              // left-anchored: right edge flush against the panel's left edge
+              const tipStyle = tip.side === "left"
+                ? { right: Math.max(8, vw - tip.panelLeft + 8), top: tip.top }
+                : { left: Math.min(tip.panelRight + 8, Math.max(8, vw - 340)), top: tip.top };
               const tipEl = React.createElement("div", {
                 className: "mg-tooltip",
-                style: { left: tip.left, top: tip.top },
+                style: tipStyle,
               },
                 React.createElement("div", { className: "mg-tt-name" }, tip.m.name || tip.m.id),
                 React.createElement("div", { className: "mg-tt-prov" }, tip.g.name || tip.g.id),
