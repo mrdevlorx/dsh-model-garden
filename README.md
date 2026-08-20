@@ -6,20 +6,6 @@ A searchable, sortable **model picker** for the [DeepSeek Harness](https://githu
 
 ![Model Garden in action](docs/model-garden.gif)
 
-## Screenshots
-
-| Trigger (composer seat) | Panel with provider groups |
-|---|---|
-| ![trigger](docs/01-trigger.png) | ![panel](docs/02-panel-groups.png) |
-
-| Detail tooltip (opens beside the list) | Instant search |
-|---|---|
-| ![tooltip](docs/03-tooltip.png) | ![search](docs/04-search.png) |
-
-| Sort by context window | Sort by price |
-|---|---|
-| ![sort by ctx](docs/05-sort-ctx.png) | ![sort by price](docs/06-sort-price.png) |
-
 ## Features
 
 - **🔍 Instant search** across model names and descriptions
