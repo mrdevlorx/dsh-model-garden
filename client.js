@@ -56,10 +56,13 @@ window.__ModuleLoader__.load({
         // and a surface slightly darker than the chat background.
         ".mg-panel { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 20; display: flex; flex-direction: column; width: min(440px, 100vw - 32px); height: min(480px, 100vh - 96px); overflow: hidden; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); border: 1px solid var(--dsw-alias-border-inverted); border-radius: 12px; box-shadow: var(--dsw-shadow-lv3); color: var(--dsw-alias-label-primary); --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }",
         "@supports (background: color-mix(in srgb, red, blue)) { .mg-panel { --mg-panel-bg: color-mix(in srgb, var(--dsw-specific-menu), #000 10%); } }",
-        ".mg-search { padding: 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); }",
-        ".mg-search input { width: 100%; box-sizing: border-box; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 20px; outline: none; }",
+        ".mg-search { display: flex; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); }",
+        ".mg-search input { flex: 1; min-width: 0; box-sizing: border-box; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 20px; outline: none; }",
         ".mg-search input::placeholder { color: var(--dsw-alias-label-dimmed); }",
         ".mg-search input:focus { border-color: var(--dsw-alias-state-business-primary); }",
+        ".mg-local { flex: none; display: inline-flex; align-items: center; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; }",
+        ".mg-local:hover { background: var(--dsw-alias-interactive-bg-hover); }",
+        ".mg-local.on { background: var(--dsw-alias-state-business-tertiary); border-color: transparent; color: var(--dsw-alias-state-business-primary); }",
         // Table header — clickable column titles, table-style sorting.
         ".mg-thead { display: grid; grid-template-columns: 14px minmax(0,1fr) 52px 92px 24px; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); background: var(--mg-panel-bg, var(--dsw-specific-menu)); font-size: 11px; font-weight: 600; line-height: 16px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); }",
         ".mg-th { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: none; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; cursor: pointer; }",
@@ -383,6 +386,8 @@ window.__ModuleLoader__.load({
           const [open, setOpen] = React.useState(false);
           const [query, setQuery] = React.useState("");
           const [favOnly, setFavOnly] = React.useState(false);
+          // localOnly: only models WITHOUT an API price (the "Local: yes" tag)
+          const [localOnly, setLocalOnly] = React.useState(false);
           // Table sorting: null = provider-grouped default view,
           // otherwise flat list sorted by the clicked column.
           const [sortKey, setSortKey] = React.useState(null); // 'name' | 'price' | null
@@ -408,6 +413,7 @@ window.__ModuleLoader__.load({
               const text = (m.name || m.id || "") + " " + (m.description || "");
               if (q !== "" && text.toLowerCase().indexOf(q) === -1) continue;
               if (favOnly && !hasFav(g.id, m.id)) continue;
+              if (localOnly && priceFor(g.id, m.id) !== undefined) continue;
               filtered.push({ g, m });
             }
           }
@@ -602,7 +608,14 @@ window.__ModuleLoader__.load({
                   value: query,
                   autoFocus: true,
                   onChange: (e) => setQuery(e.target.value),
-                })
+                }),
+                React.createElement("button", {
+                  type: "button",
+                  className: "mg-local" + (localOnly ? " on" : ""),
+                  onClick: () => setLocalOnly(!localOnly),
+                  "aria-pressed": localOnly,
+                  title: localOnly ? "Show all models" : "Show only local models (Local: yes, no API price)",
+                }, "Local")
               ),
               React.createElement("div", { className: "mg-thead" },
                 React.createElement("span", null, ""),
@@ -658,6 +671,7 @@ window.__ModuleLoader__.load({
               filtered.length === 0 && !(status === "loading") && React.createElement("div", { className: "mg-empty" },
                 groups.length === 0 ? "No models available"
                   : favOnly ? "No favorites yet — star a model"
+                  : localOnly ? "No local models (all models have an API price)"
                   : "No matching models"),
               React.createElement("div", { className: "mg-groups" },
                 sortKey !== null
