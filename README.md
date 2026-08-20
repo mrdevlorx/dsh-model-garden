@@ -4,13 +4,14 @@ A searchable, sortable **model picker** for the [DeepSeek Harness](https://githu
 
 ![status](https://img.shields.io/badge/status-stable-brightgreen) ![license](https://img.shields.io/badge/license-MIT-blue)
 
-![Model Garden in action](docs/model-garden.gif)
+![Model Garden in action](docs/model-garden.png)
 
 ## Features
 
 - **🔍 Instant search** across model names and descriptions
 - **📊 Sortable table columns** — click `Name`, `Ctx` or `Price` to sort asc/desc; a third click returns to the provider-grouped view
 - **⭐ Favorites** — star models, toggle favorites-only from the table header; persisted in `localStorage`
+- **🏠 Local tag** — providers are flagged *local* by their real endpoint (baseURL from settings: loopback / RFC1918 / LAN hostnames), never by price guesswork; the **Local** box next to the search input filters to them
 - **▾ Collapsible provider groups** — collapse state is persisted per provider
 - **💰 Model prices** from [models.dev](https://models.dev) (the same source OpenCode uses), shown as `$input/$output` per 1M tokens, cached for 24 h
 - **🧠 Context windows** — read live from the host `llm` service (adapter-owned data, works for **local** providers like llama.cpp / Ollama-style gateways too), with models.dev as fallback
