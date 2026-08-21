@@ -4,7 +4,7 @@ A searchable, sortable **model picker** for the [DeepSeek Harness](https://githu
 
 ![status](https://img.shields.io/badge/status-stable-brightgreen) [![npm](https://img.shields.io/npm/v/dsh-model-garden)](https://www.npmjs.com/package/dsh-model-garden) ![license](https://img.shields.io/badge/license-MIT-blue)
 
-![Model Garden in action](docs/model-garden.png)
+![Model Garden in action](docs/model-garden-ui.png)
 
 ## Features
 
