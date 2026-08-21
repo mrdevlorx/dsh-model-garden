@@ -505,7 +505,7 @@ window.__ModuleLoader__.load({
           React.useEffect(() => {
             if (!open) return;
             function onKey(e) {
-              if (e.key === "Escape") setOpen(false);
+              if (e.key === "Escape") { setOpen(false); setTip(null); }
             }
             const d = globalThis.document;
             d.addEventListener("keydown", onKey);
@@ -559,8 +559,8 @@ window.__ModuleLoader__.load({
 
           function toggleOpen() {
             if (locked) return;
-            if (open) { setOpen(false); return; }
-            setOpen(true); setQuery("");
+            if (open) { setOpen(false); setTip(null); return; }
+            setOpen(true); setQuery(""); setTip(null);
           }
           // Table-header click: asc → desc → off (back to provider groups).
           function toggleSort(key) {
@@ -573,6 +573,7 @@ window.__ModuleLoader__.load({
             if (m.reasoning && m.reasoning.defaultEffort) sel.reasoningEffort = m.reasoning.defaultEffort;
             props.select(sel);
             setOpen(false);
+            setTip(null);
           }
           // Tooltip opens BESIDE the panel, its RIGHT edge always flush
           // against the panel's LEFT edge (anchored via style.right, so any
@@ -654,7 +655,7 @@ window.__ModuleLoader__.load({
               type: "button",
               className: "mg-backdrop",
               "aria-label": "Close model picker",
-              onClick: () => setOpen(false),
+              onClick: () => { setOpen(false); setTip(null); },
             }),
             open && !locked && React.createElement("div", { className: "mg-panel", role: "listbox" },
               React.createElement("div", { className: "mg-search" },
@@ -775,7 +776,7 @@ window.__ModuleLoader__.load({
               )
             ),
             (function () {
-              if (!tip || locked) return null;
+              if (!tip || locked || !open) return null;
               const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
               // left-anchored: right edge flush against the panel's left edge
               // (1px seam); maxWidth/minWidth shrink the tooltip to the room
