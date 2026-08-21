@@ -513,6 +513,22 @@ window.__ModuleLoader__.load({
           const status = state === null || state.status === undefined ? "idle" : state.status;
           const err = state === null || state.error === undefined ? null : state.error;
 
+          // Highest reasoning level a model offers. Adapters list efforts in
+          // ascending order (off → minimal → low → medium → high → xhigh →
+          // max), so the LAST entry is the strongest level. Falls back to the
+          // model's defaultEffort when no levels are declared.
+          function highestEffort(m) {
+            const efforts = m && m.reasoning && Array.isArray(m.reasoning.efforts) ? m.reasoning.efforts : [];
+            if (efforts.length > 0) {
+              const last = efforts[efforts.length - 1];
+              return String(last.id !== undefined && last.id !== null ? last.id : last.name);
+            }
+            if (m && m.reasoning && m.reasoning.defaultEffort !== undefined) {
+              return String(m.reasoning.defaultEffort);
+            }
+            return "";
+          }
+
           // Reasoning info of the currently selected model. The trigger label
           // just shows the model name; any effort level is chosen via a
           // compact dropdown right next to it in the chat composer
@@ -531,9 +547,9 @@ window.__ModuleLoader__.load({
           const currentEfforts = (curModelObj && curModelObj.reasoning && curModelObj.reasoning.efforts) || [];
           const currentEffort = (function () {
             if (current !== null && current.reasoningEffort !== undefined) return String(current.reasoningEffort);
-            if (curModelObj && curModelObj.reasoning && curModelObj.reasoning.defaultEffort !== undefined) {
-              return String(curModelObj.reasoning.defaultEffort);
-            }
+            // No explicit effort on the selection yet → show the strongest
+            // level the model offers (defaultEffort only as fallback).
+            if (curModelObj !== null) return highestEffort(curModelObj);
             return "";
           })();
           const currentLabel = current === null ? null : (String(current.model) || null);
@@ -727,7 +743,11 @@ window.__ModuleLoader__.load({
           }
           function pick(g, m) {
             const sel = { provider: g.id, model: m.id };
-            if (m.reasoning && m.reasoning.defaultEffort) sel.reasoningEffort = m.reasoning.defaultEffort;
+            // Every picked model starts at its HIGHEST reasoning level
+            // (efforts are listed ascending, so the last entry is the
+            // strongest); defaultEffort is only a fallback.
+            const hi = highestEffort(m);
+            if (hi !== "") sel.reasoningEffort = hi;
             props.select(sel);
             setOpen(false);
             setTip(null);
