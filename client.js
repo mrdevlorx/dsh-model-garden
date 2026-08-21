@@ -138,19 +138,28 @@ window.__ModuleLoader__.load({
         // to its very top (a plain overflow-y:auto flex child clips it).
         ".mg-costpop-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; overscroll-behavior: contain; }",
         ".mg-costpop-title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px; }",
-        ".mg-costpop-copy { margin-left: auto; flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid rgba(128,140,160,.45); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; opacity: .85; }",
+        // copy + export sit side by side as one unit, pushed to the right.
+        ".mg-costpop-btns { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 8px; }",
+        ".mg-costpop-copy { flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid rgba(128,140,160,.45); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; opacity: .85; }",
         ".mg-costpop-copy:hover { opacity: 1; background: rgba(128,140,160,.18); }",
-        // All rows are LEFT-aligned and pack tightly: name, then values
-        // immediately after (no space-between stretch that wastes width).
-        ".mg-costpop-row { display: flex; justify-content: flex-start; align-items: baseline; gap: 8px; padding: 1px 0; }",
-        ".mg-costpop-row .mg-costpop-name { flex: none; max-width: 46%; }",
-        ".mg-costpop-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
-        ".mg-costpop-val { flex: none; text-align: left; opacity: .85; font-variant-numeric: tabular-nums; white-space: nowrap; }",
-        ".mg-costpop-sep { margin: 6px 0 4px; border-top: 1px solid rgba(128,140,160,.35); }",
-        ".mg-costpop-step { display: flex; justify-content: flex-start; align-items: baseline; gap: 8px; padding: 1px 0; opacity: .8; }",
-        ".mg-costpop-step .mg-costpop-name { flex: none; max-width: 40%; }",
+        // Table headers (pinned) share the same column raster as the rows.
+        ".mg-costpop-th { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); }",
+        // Clickable column headers — sort asc → desc → off, like the panel.
+        ".mg-costpop-h { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: none; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; cursor: pointer; }",
+        ".mg-costpop-h:hover { color: var(--dsw-alias-label-primary); }",
+        ".mg-costpop-h .mg-ind { font-size: 8px; }",
+        ".mg-costpop-h.n { width: 100%; justify-content: flex-end; }",
+        // Model summary table: Model | × | In | Out | Cache | ≈
+        ".mg-costpop-models, .mg-costpop-mrow { display: grid; grid-template-columns: minmax(0,1fr) 30px 46px 46px 54px 58px; gap: 6px; align-items: center; }",
+        ".mg-costpop-mrow { padding: 2px 0; }",
+        // Step table: Time | Model | In | Out | Cache
+        ".mg-costpop-steps, .mg-costpop-step { display: grid; grid-template-columns: 74px minmax(0,1fr) 46px 46px 54px; gap: 6px; align-items: center; }",
+        ".mg-costpop-step { padding: 2px 0; }",
+        ".mg-costpop-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }",
+        ".mg-costpop-num { text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-secondary); white-space: nowrap; }",
+        ".mg-costpop-time { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-tertiary); white-space: nowrap; }",
         ".mg-costpop-step.dim { opacity: .55; }",
-        ".mg-costpop-time { flex: none; opacity: .7; font-variant-numeric: tabular-nums; }",
+        ".mg-costpop-sep { margin: 6px 0 4px; border-top: 1px solid rgba(128,140,160,.35); }",
         // Tooltip — harness tooltip surface (dark in both themes). Rendered
         // through a body portal (see below), so it must win against every app
         // stacking context: z-index well above panels/menus.
@@ -638,6 +647,9 @@ window.__ModuleLoader__.load({
           const [histRect, setHistRect] = React.useState(null);
           const [panelRect, setPanelRect] = React.useState(null);
           const [copied, setCopied] = React.useState(false);
+          // Column sorting (click header): asc → desc → off, like the panel.
+          const [stepSort, setStepSort] = React.useState(null); // {key, dir} | null
+          const [modelSort, setModelSort] = React.useState(null);
           const sessionId = props.sessionId;
           // The breakdown popup is interactive (scrollable, copy button), so
           // the pointer must be able to travel from the cost line into it.
@@ -1156,22 +1168,64 @@ window.__ModuleLoader__.load({
                   globalThis.navigator.clipboard.writeText(text).then(done, fb);
                 } else fb();
               }
-              const modelRows = models.map((m) => {
+              // Column sort for the model summary (asc → desc → off).
+              let visibleModels = models;
+              if (modelSort !== null) {
+                const dir = modelSort.dir === "asc" ? 1 : -1;
+                visibleModels = models.slice().sort((a, b) => {
+                  if (modelSort.key === "name") return String(a.model).localeCompare(String(b.model)) * dir;
+                  if (modelSort.key === "steps") return ((a.steps || 0) - (b.steps || 0)) * dir;
+                  if (modelSort.key === "in") return ((a.inputTokens || 0) - (b.inputTokens || 0)) * dir;
+                  if (modelSort.key === "out") return ((a.outputTokens || 0) - (b.outputTokens || 0)) * dir;
+                  if (modelSort.key === "cache") {
+                    const ca = (a.cacheReadTokens || 0) + (a.cacheWriteTokens || 0);
+                    const cb = (b.cacheReadTokens || 0) + (b.cacheWriteTokens || 0);
+                    return (ca - cb) * dir;
+                  }
+                  // cost: unpriced models sink to the bottom
+                  const ea = estimateCost(priceFor(a.provider, a.model), {
+                    inputTokens: a.inputTokens, outputTokens: a.outputTokens,
+                    cacheReadTokens: a.cacheReadTokens, cacheWriteTokens: a.cacheWriteTokens,
+                  });
+                  const eb = estimateCost(priceFor(b.provider, b.model), {
+                    inputTokens: b.inputTokens, outputTokens: b.outputTokens,
+                    cacheReadTokens: b.cacheReadTokens, cacheWriteTokens: b.cacheWriteTokens,
+                  });
+                  return ((ea.hasPrice ? ea.total : -1) - (eb.hasPrice ? eb.total : -1)) * dir;
+                });
+              }
+              const modelRows = visibleModels.map((m) => {
                 const price = priceFor(m.provider, m.model);
                 const est = estimateCost(price, {
                   inputTokens: m.inputTokens, outputTokens: m.outputTokens,
                   cacheReadTokens: m.cacheReadTokens, cacheWriteTokens: m.cacheWriteTokens,
                 });
-                const money = est.hasPrice ? " · ≈ " + formatMoney(est.total) : "";
                 const cache = (m.cacheReadTokens || 0) + (m.cacheWriteTokens || 0);
-                return React.createElement("div", { key: m.provider + "::" + m.model, className: "mg-costpop-row" },
+                return React.createElement("div", { key: m.provider + "::" + m.model, className: "mg-costpop-mrow" },
                   React.createElement("span", { className: "mg-costpop-name" }, m.model),
-                  React.createElement("span", { className: "mg-costpop-val" },
-                    m.steps + "× · " + formatTokens(m.inputTokens) + " in / " + formatTokens(m.outputTokens) + " out / " +
-                    formatTokens(cache) + " cache" + money)
+                  React.createElement("span", { className: "mg-costpop-num", title: "steps" }, String(m.steps)),
+                  React.createElement("span", { className: "mg-costpop-num" }, formatTokens(m.inputTokens)),
+                  React.createElement("span", { className: "mg-costpop-num" }, formatTokens(m.outputTokens)),
+                  React.createElement("span", { className: "mg-costpop-num" }, formatTokens(cache)),
+                  React.createElement("span", { className: "mg-costpop-num" }, est.hasPrice ? formatMoney(est.total) : "–")
                 );
               });
-              const stepRows = steps.map((s, i) => {
+              // Column sort for the step table (asc → desc → off). The CSV export
+              // follows the visible order.
+              let visibleSteps = steps;
+              if (stepSort !== null) {
+                const dir = stepSort.dir === "asc" ? 1 : -1;
+                visibleSteps = steps.slice().sort((a, b) => {
+                  if (stepSort.key === "time") return ((a.time || 0) - (b.time || 0)) * dir;
+                  if (stepSort.key === "model") return String(a.model).localeCompare(String(b.model)) * dir;
+                  if (stepSort.key === "in") return ((a.inputTokens || 0) - (b.inputTokens || 0)) * dir;
+                  if (stepSort.key === "out") return ((a.outputTokens || 0) - (b.outputTokens || 0)) * dir;
+                  const ca = (a.cacheReadTokens || 0) + (a.cacheWriteTokens || 0);
+                  const cb = (b.cacheReadTokens || 0) + (b.cacheWriteTokens || 0);
+                  return (ca - cb) * dir;
+                });
+              }
+              const stepRows = visibleSteps.map((s, i) => {
                 let ts = "";
                 try {
                   const d = new Date(s.time);
@@ -1182,25 +1236,148 @@ window.__ModuleLoader__.load({
                 return React.createElement("div", { key: "s" + i, className: "mg-costpop-step" },
                   React.createElement("span", { className: "mg-costpop-time" }, ts),
                   React.createElement("span", { className: "mg-costpop-name" }, s.model),
-                  React.createElement("span", { className: "mg-costpop-val" },
-                    formatTokens(s.inputTokens) + " in / " + formatTokens(s.outputTokens) + " out" +
-                    (cache > 0 ? " / " + formatTokens(cache) + " cache" : ""))
+                  React.createElement("span", { className: "mg-costpop-num" }, formatTokens(s.inputTokens)),
+                  React.createElement("span", { className: "mg-costpop-num" }, formatTokens(s.outputTokens)),
+                  React.createElement("span", { className: "mg-costpop-num" }, formatTokens(cache))
                 );
               });
+              const totalSteps = typeof hist.totalSteps === "number" ? hist.totalSteps : steps.length;
+              function toggleStepSort(key) {
+                setStepSort(stepSort !== null && stepSort.key === key
+                  ? (stepSort.dir === "asc" ? { key, dir: "desc" } : null)
+                  : { key, dir: "asc" });
+              }
+              function toggleModelSort(key) {
+                setModelSort(modelSort !== null && modelSort.key === key
+                  ? (modelSort.dir === "asc" ? { key, dir: "desc" } : null)
+                  : { key, dir: "asc" });
+              }
+              function sortInd(key, st) {
+                if (st === null || st.key !== key) return null;
+                return React.createElement("span", { className: "mg-ind" }, st.dir === "asc" ? "▲" : "▼");
+              }
+              // CSV export of the currently SORTED step list (BOM
+              // prefix so Excel opens UTF-8 correctly).
+              function exportCsv() {
+                const rows = [["time", "provider", "model", "inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"]];
+                for (const s of visibleSteps) {
+                  const t = typeof s.time === "number" && s.time > 0 ? new Date(s.time).toISOString() : "";
+                  rows.push([t,
+                    String(s.provider === undefined ? "" : s.provider),
+                    String(s.model === undefined ? "" : s.model),
+                    String(s.inputTokens || 0), String(s.outputTokens || 0),
+                    String(s.cacheReadTokens || 0), String(s.cacheWriteTokens || 0)]);
+                }
+                const csv = rows.map((r) =>
+                  r.map((v) => /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v).join(",")
+                ).join("\n");
+                try {
+                  const blob = new globalThis.Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "model-garden-tokens-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".csv";
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                } catch {}
+              }
               const popEl = React.createElement("div", Object.assign({ className: "mg-costpop", style: popPos() }, popHover),
                 React.createElement("div", { className: "mg-costpop-title" },
                   React.createElement("span", null,
-                    "Session breakdown · " + (typeof hist.totalSteps === "number" ? hist.totalSteps : steps.length) + " steps"),
+                    "Session breakdown · " + totalSteps + " steps"),
+                  React.createElement("div", { className: "mg-costpop-btns" },
+                    React.createElement("button", {
+                      type: "button",
+                      className: "mg-costpop-copy",
+                      onClick: copyBreakdown,
+                      title: "Copy token breakdown (in / out / cache)",
+                    }, copied ? "✓ copied" : "copy"),
+                    React.createElement("button", {
+                      type: "button",
+                      className: "mg-costpop-copy",
+                      onClick: exportCsv,
+                      title: "Export the step list as CSV",
+                    }, "export")
+                  )
+                ),
+                models.length > 0 && React.createElement("div", { className: "mg-costpop-models mg-costpop-th" },
                   React.createElement("button", {
                     type: "button",
-                    className: "mg-costpop-copy",
-                    onClick: copyBreakdown,
-                    title: "Copy token breakdown (in / out / cache)",
-                  }, copied ? "✓ copied" : "copy")
+                    className: "mg-costpop-h",
+                    onClick: () => toggleModelSort("name"),
+                    title: "Sort by model (asc → desc → off)",
+                  }, "Model", sortInd("name", modelSort)),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-h n",
+                    onClick: () => toggleModelSort("steps"),
+                    title: "Sort by steps (asc → desc → off)",
+                  }, "×", sortInd("steps", modelSort)),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-h n",
+                    onClick: () => toggleModelSort("in"),
+                    title: "Sort by input tokens (asc → desc → off)",
+                  }, "In", sortInd("in", modelSort)),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-h n",
+                    onClick: () => toggleModelSort("out"),
+                    title: "Sort by output tokens (asc → desc → off)",
+                  }, "Out", sortInd("out", modelSort)),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-h n",
+                    onClick: () => toggleModelSort("cache"),
+                    title: "Sort by cache tokens (asc → desc → off)",
+                  }, "Cache", sortInd("cache", modelSort)),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-h n",
+                    onClick: () => toggleModelSort("cost"),
+                    title: "Sort by ≈ cost (asc → desc → off)",
+                  }, "≈", sortInd("cost", modelSort))
                 ),
                 modelRows,
                 steps.length > 0 && React.createElement("div", { className: "mg-costpop-sep" }),
-                React.createElement("div", { className: "mg-costpop-scroll" }, stepRows)
+                steps.length > 0 && React.createElement("div", { className: "mg-costpop-steps mg-costpop-th" },
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-h",
+                    onClick: () => toggleStepSort("time"),
+                    title: "Sort by time (asc → desc → off)",
+                  }, "Time", sortInd("time", stepSort)),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-h",
+                    onClick: () => toggleStepSort("model"),
+                    title: "Sort by model (asc → desc → off)",
+                  }, "Model", sortInd("model", stepSort)),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-h n",
+                    onClick: () => toggleStepSort("in"),
+                    title: "Sort by input tokens (asc → desc → off)",
+                  }, "In", sortInd("in", stepSort)),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-h n",
+                    onClick: () => toggleStepSort("out"),
+                    title: "Sort by output tokens (asc → desc → off)",
+                  }, "Out", sortInd("out", stepSort)),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-h n",
+                    onClick: () => toggleStepSort("cache"),
+                    title: "Sort by cache tokens (asc → desc → off)",
+                  }, "Cache", sortInd("cache", stepSort))
+                ),
+                React.createElement("div", { className: "mg-costpop-scroll" },
+                  steps.length === 0
+                    ? React.createElement("div", { className: "mg-costpop-step dim" }, "no usage steps yet")
+                    : stepRows)
               );
               return portalOrInline(popEl);
             })()
