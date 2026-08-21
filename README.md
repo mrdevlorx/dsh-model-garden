@@ -77,7 +77,7 @@ Favorites, collapsed providers and the price cache live in the browser's `localS
 
 ## Compatibility
 
-Developed against DeepSeek Harness `0.1.0-rc.6` (`@deepseek-ai/dsh-host-webserver`, `dsh-session`, `dsh-llm`, `dsh-client-ui-model-selection`). The client half is plain React via `window.__ModuleLoader__` — no build step, no dependencies.
+Developed and tested against DeepSeek Harness `0.1.0-rc.8` (`@deepseek-ai/dsh-host-webserver`, `dsh-session`, `dsh-llm`, `dsh-client-ui-model-selection`); first released against `0.1.0-rc.6`. The client half is plain React via `window.__ModuleLoader__` — no build step, no dependencies.
 
 ## Credits
 
