@@ -4,7 +4,12 @@ A searchable, sortable **model picker** for the [DeepSeek Harness](https://githu
 
 ![status](https://img.shields.io/badge/status-stable-brightgreen) [![npm](https://img.shields.io/npm/v/dsh-model-garden)](https://www.npmjs.com/package/dsh-model-garden) ![license](https://img.shields.io/badge/license-MIT-blue)
 
-![Model Garden in action](docs/model-garden-ui.png)
+<table>
+  <tr>
+    <td width="50%"><img src="docs/model-garden-ui-1.png" alt="Model Garden picker with live cost"></td>
+    <td width="50%"><img src="docs/model-garden-ui-2.png" alt="Model Garden session cost breakdown"></td>
+  </tr>
+</table>
 
 ## Features
 
