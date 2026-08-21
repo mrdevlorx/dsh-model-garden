@@ -15,7 +15,8 @@ A searchable, sortable **model picker** for the [DeepSeek Harness](https://githu
 - **▾ Collapsible provider groups** — collapse state is persisted per provider
 - **💰 Model prices** from [models.dev](https://models.dev) (the same source OpenCode uses), shown as `$input/$output` per 1M tokens, cached for 24 h. **Subscription routes** (all-zero cost in the catalog, e.g. coding-plan providers) resolve a *reference price* from their pay-as-you-go provider via `PROVIDER_ALIASES`, so plan models still show what their tokens would cost at API rates; only true **local** models stay unpriced
 - **🧠 Context windows** — read live from the host `llm` service (adapter-owned data, works for **local** providers like llama.cpp / Ollama-style gateways too), with models.dev as fallback
-- **💸 Live per-task usage & cost** — real provider-reported token usage (from the session log) is **always shown** while the panel is open (`in / out / cache`), multiplied by the (reference) price when one is known — the same math OpenCode uses (`usage × price`, not a heuristic)
+- **💸 Live per-task usage & cost** — real provider-reported token usage (from the session log) is **always shown** while the panel is open (`in / out / cache`). Each model's usage is multiplied by **its own** (reference) price — properly attributed even when a session switched models mid-way — the same math OpenCode uses (`usage × price`, not a heuristic)
+- **🧾 Session cost breakdown** — hover the `approx cost` figure for a popup (sized like the picker, parked on its left): per-model totals (steps, tokens, ≈ cost), a scrollable timestamped step list (date + time, in/out/cache) and a **copy button** for the token breakdown. Attribution of each step to its model comes straight from the session log (`request/context` events); nothing extra is stored
 - **🖱️ Detail tooltip** that opens *beside* the panel (never covers the list): description, price, context window, max output, reasoning efforts
 - **🎨 Native look** — built entirely on the harness design tokens (`--dsw-alias-*`), matches light & dark theme automatically
 
@@ -26,7 +27,7 @@ The package is a **static profile plugin** with two halves:
 | Half | File | Role |
 |---|---|---|
 | Client | `client.js` | Registers the `conversation.input.model` slot (priority `-1`, shadowing the native seat) and renders the picker |
-| Host | `index.js` | Serves two same-origin JSON routes on the harness `webServer` service |
+| Host | `index.js` | Serves three same-origin JSON routes on the harness `webServer` service |
 
 ### Host endpoints
 
@@ -34,11 +35,16 @@ The package is a **static profile plugin** with two halves:
 GET /model-garden/cost?session=<sessionId>
   → { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens, steps }
 
+GET /model-garden/cost-history?session=<sessionId>&limit=<n>
+  → { steps: [ { time, provider, model, turn, step, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens } ] (newest first, capped),
+      models: [ { provider, model, steps, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens } ],
+      totalSteps }
+
 GET /model-garden/catalog
   → { "provider::model": { local, context?, maxOutput? } }   (cached 10 min)
 ```
 
-The cost endpoint aggregates the real `usage` payloads of `assistant/message` events from the durable session log — no estimation. The catalog endpoint resolves `contextWindow` / `defaultMaxTokens` per model through the host `llm` service (`resolveModelInfo`), so local/self-hosted providers report their real limits.
+The cost endpoint aggregates the real `usage` payloads of `assistant/message` events from the durable session log — no estimation. The cost-history endpoint additionally attributes each usage step to the model in effect: `assistant/message` events carry usage but not the model, so it tracks `request/context` (and `request/header`) events, which precede the request they describe with `{ provider, model }` — a single pass over the same in-memory events, no extra persistence. The catalog endpoint resolves `contextWindow` / `defaultMaxTokens` per model through the host `llm` service (`resolveModelInfo`), so local/self-hosted providers report their real limits.
 
 ## Installation
 

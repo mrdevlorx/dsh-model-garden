@@ -16,8 +16,13 @@
  *    moonshotai, alibaba-tp → alibaba-cn), so plan models still show what
  *    their tokens would cost; local models stay unpriced by design,
  *  - live per-task token usage (real provider usage from the session log)
- *    always shown while the panel is open; multiplied by the (reference)
- *    price when one is known, via the host endpoint `/model-garden/cost`,
+ *    always shown while the panel is open; the cost figure attributes each
+ *    model's usage to its OWN (reference) price, via the host endpoint
+ *    `/model-garden/cost-history`. Hovering the cost FIGURE opens a
+ *    session breakdown popup (per-model totals + timestamped steps,
+ *    scrollable, copyable) from the same data; attribution of every step
+ *    to the model in effect comes from the log's request/context events —
+ *    nothing extra is persisted,
  *  - hover tooltip with description, price, context window and efforts.
  *
  * The seat is a `single` slot with shadowing: registering at priority -1 wins
@@ -69,11 +74,11 @@ window.__ModuleLoader__.load({
         ".mg-local:hover { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-local.on { background: var(--dsw-alias-state-business-tertiary); border-color: transparent; color: var(--dsw-alias-state-business-primary); }",
         // Table header — clickable column titles, table-style sorting.
-        ".mg-thead { display: grid; grid-template-columns: 14px minmax(0,1fr) 52px 92px 24px; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); background: var(--mg-panel-bg, var(--dsw-specific-menu)); font-size: 11px; font-weight: 600; line-height: 16px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); }",
+        ".mg-thead { display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); background: var(--mg-panel-bg, var(--dsw-specific-menu)); font-size: 11px; font-weight: 600; line-height: 16px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); }",
         ".mg-th { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: none; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; cursor: pointer; }",
         ".mg-th:hover { color: var(--dsw-alias-label-primary); }",
         ".mg-th.active { color: var(--dsw-alias-state-business-primary); }",
-        ".mg-th.ctx, .mg-th.price { justify-content: flex-end; }",
+        ".mg-th.ctx, .mg-th.price { justify-content: flex-start; }",
         ".mg-th.star { justify-content: center; font-size: 13px; text-transform: none; }",
         ".mg-th .mg-ind { font-size: 8px; }",
         ".mg-count { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); }",
@@ -88,13 +93,13 @@ window.__ModuleLoader__.load({
         // Option rows — SAME fixed-width raster as .mg-thead: every row is its
         // own grid container, so `auto` columns would size per row and break
         // column alignment. Fixed px widths keep all rows in lockstep.
-        ".mg-model { display: grid; grid-template-columns: 14px minmax(0,1fr) 52px 92px 24px; align-items: center; gap: 8px; width: 100%; min-height: 38px; box-sizing: border-box; padding: 6px 8px; border: none; border-radius: 10px; outline: none; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }",
+        ".mg-model { display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px; align-items: center; gap: 8px; width: 100%; min-height: 38px; box-sizing: border-box; padding: 6px 8px; border: none; border-radius: 10px; outline: none; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }",
         ".mg-model:hover, .mg-model:focus-visible { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-check { text-align: center; font-size: 12px; line-height: 1; color: var(--dsw-alias-label-primary); }",
         ".mg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; line-height: 20px; }",
         ".mg-name .mg-prov { font-size: 11px; font-weight: 400; color: var(--dsw-alias-label-caption); }",
-        ".mg-price { font-size: 12px; line-height: 18px; text-align: right; color: var(--dsw-alias-label-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }",
-        ".mg-ctx { font-size: 12px; line-height: 18px; text-align: right; color: var(--dsw-alias-label-tertiary); white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }",
+        ".mg-price { font-size: 12px; line-height: 18px; text-align: left; color: var(--dsw-alias-label-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }",
+        ".mg-ctx { font-size: 12px; line-height: 18px; text-align: left; color: var(--dsw-alias-label-tertiary); white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }",
         ".mg-star { cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 3px; border-radius: 4px; text-align: center; color: var(--dsw-alias-label-caption); opacity: .6; }",
         ".mg-model:hover .mg-star { opacity: 1; }",
         ".mg-star.on { color: var(--dsw-alias-state-warn-primary); opacity: 1; }",
@@ -103,6 +108,32 @@ window.__ModuleLoader__.load({
         ".mg-error { margin: 4px 8px 0; padding: 7px 8px; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; }",
         ".mg-cost { padding: 6px 10px; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-business-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
         ".mg-cost-detail { color: var(--dsw-alias-label-tertiary); }",
+        // The cost figure sits inside an INVISIBLE padded hover target that
+        // reaches all the way to the row's LEFT edge (negative margin eats
+        // the row's left padding) — comfortable to hit, nothing drawn,
+        // opens the breakdown popup.
+        ".mg-costbtn { display: inline-block; padding: 1px 8px 1px 10px; margin: -1px 0 -1px -10px; border: 1px solid transparent; border-radius: 8px; cursor: help; }",
+        // Interactive popup: the pointer may enter it, scroll the step list
+        // and press the copy button.
+        ".mg-costpop { position: fixed; z-index: 1001; display: flex; flex-direction: column; box-sizing: border-box; width: 380px; overflow: hidden; padding: 9px 11px; border-radius: 10px; background: var(--dsw-alias-tooltip-bg); box-shadow: var(--dsw-shadow-lv2); pointer-events: auto; font-size: 12px; line-height: 18px; color: var(--dsw-static-neutral-bluish-50); overscroll-behavior: contain; }",
+        // Only the step list scrolls; title + model summary stay pinned.
+        // flex:1 + min-height:0 is what makes the scroll area reachable
+        // to its very top (a plain overflow-y:auto flex child clips it).
+        ".mg-costpop-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; overscroll-behavior: contain; }",
+        ".mg-costpop-title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px; }",
+        ".mg-costpop-copy { margin-left: auto; flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid rgba(128,140,160,.45); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; opacity: .85; }",
+        ".mg-costpop-copy:hover { opacity: 1; background: rgba(128,140,160,.18); }",
+        // All rows are LEFT-aligned and pack tightly: name, then values
+        // immediately after (no space-between stretch that wastes width).
+        ".mg-costpop-row { display: flex; justify-content: flex-start; align-items: baseline; gap: 8px; padding: 1px 0; }",
+        ".mg-costpop-row .mg-costpop-name { flex: none; max-width: 46%; }",
+        ".mg-costpop-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+        ".mg-costpop-val { flex: none; text-align: left; opacity: .85; font-variant-numeric: tabular-nums; white-space: nowrap; }",
+        ".mg-costpop-sep { margin: 6px 0 4px; border-top: 1px solid rgba(128,140,160,.35); }",
+        ".mg-costpop-step { display: flex; justify-content: flex-start; align-items: baseline; gap: 8px; padding: 1px 0; opacity: .8; }",
+        ".mg-costpop-step .mg-costpop-name { flex: none; max-width: 40%; }",
+        ".mg-costpop-step.dim { opacity: .55; }",
+        ".mg-costpop-time { flex: none; opacity: .7; font-variant-numeric: tabular-nums; }",
         // Tooltip — harness tooltip surface (dark in both themes). Rendered
         // through a body portal (see below), so it must win against every app
         // stacking context: z-index well above panels/menus.
@@ -235,11 +266,20 @@ window.__ModuleLoader__.load({
       if (!priceMap) return false;
       return zeroCost(priceMap["" + provider + "::" + model]);
     }
+    // Compact money for tight columns: 2 decimals normally, 4 for sub-cent
+    // prices, trailing zeros trimmed ($1.77744 -> $1.78, $0.00280 -> $0.0028).
+    function fmtMoneyShort(x) {
+      if (typeof x !== "number" || !isFinite(x)) return "";
+      const d = Math.abs(x) < 0.01 ? 4 : 2;
+      let s = x.toFixed(d);
+      if (s.indexOf(".") !== -1) s = s.replace(/0+$/, "").replace(/\.$/, "");
+      return s;
+    }
     function formatPrice(c) {
       if (!c) return "";
       const parts = [];
-      if (typeof c.input === "number") parts.push("$" + String(c.input));
-      if (typeof c.output === "number") parts.push("$" + String(c.output));
+      if (typeof c.input === "number") parts.push("$" + fmtMoneyShort(c.input));
+      if (typeof c.output === "number") parts.push("$" + fmtMoneyShort(c.output));
       return parts.length === 0 ? "" : parts.join("/");
     }
     function formatTokens(n) {
@@ -521,40 +561,111 @@ window.__ModuleLoader__.load({
             // eslint-disable-next-line react-hooks/exhaustive-deps
           }, [open]);
 
-          // ---- Live per-task cost (real usage x current model price) ----
-          const [cost, setCost] = React.useState(null);
-          const [costErr, setCostErr] = React.useState(false);
+          // ---- Live per-task cost + session breakdown ----
+          // One poll against /model-garden/cost-history serves both: it
+          // returns per-model aggregates AND recent timestamped steps. The
+          // cost line sums each model's usage × its OWN (reference) price —
+          // properly attributed instead of pricing the whole session at the
+          // current model's rate. Hovering the line opens the breakdown
+          // popup from the same data (no extra fetch). The host attributes
+          // every step to the model in effect via the session log's
+          // request/context events — nothing extra is stored.
+          const [hist, setHist] = React.useState(null);
+          const [histErr, setHistErr] = React.useState(false);
+          const [histOpen, setHistOpen] = React.useState(false);
+          const [histRect, setHistRect] = React.useState(null);
+          const [panelRect, setPanelRect] = React.useState(null);
+          const [copied, setCopied] = React.useState(false);
           const sessionId = props.sessionId;
+          // The breakdown popup is interactive (scrollable, copy button), so
+          // the pointer must be able to travel from the cost line into it.
+          // Closing is delayed briefly; entering either element cancels it.
+          const histCloseTimer = React.useRef(null);
+          // While the popup is open the poll does NOT apply fresh data: new
+          // steps land at the TOP of the list, so live updates would keep
+          // pushing the content down and the user could never scroll to the
+          // top. The view freezes while open and resumes after closing.
+          const histOpenRef = React.useRef(false);
+          function openHist(v) {
+            histOpenRef.current = v;
+            setHistOpen(v);
+          }
+          function scheduleHistClose() {
+            if (histCloseTimer.current !== null) globalThis.clearTimeout(histCloseTimer.current);
+            histCloseTimer.current = globalThis.setTimeout(() => {
+              histCloseTimer.current = null;
+              openHist(false);
+            }, 150);
+          }
+          function cancelHistClose() {
+            if (histCloseTimer.current !== null) {
+              globalThis.clearTimeout(histCloseTimer.current);
+              histCloseTimer.current = null;
+            }
+          }
+          React.useEffect(() => () => { if (histCloseTimer.current !== null) globalThis.clearTimeout(histCloseTimer.current); }, []);
+          // Any panel close (trigger, backdrop, Escape, model pick) must
+          // lift the popup freeze — otherwise polling stays paused forever.
+          React.useEffect(() => {
+            if (!open && histOpenRef.current) openHist(false);
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+          }, [open]);
           React.useEffect(() => {
             if (!open || !sessionId) return;
             let alive = true;
-            let timer = null;
             const tick = () => {
               // Skip polling while the tab is hidden; the interval keeps
               // running but stays cheap, and the next visible tick refreshes.
               if (globalThis.document && globalThis.document.hidden) return;
-              globalThis.fetch("/model-garden/cost?session=" + encodeURIComponent(String(sessionId)))
+              // While the breakdown popup is open the view must not change:
+              // fresh steps land at the TOP of the list and would chase the
+              // scroll position away from the top the user is heading to.
+              if (histOpenRef.current) return;
+              globalThis.fetch("/model-garden/cost-history?session=" + encodeURIComponent(String(sessionId)) + "&limit=200")
                 .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
-                .then(function (d) {
-                  if (!alive) return;
-                  setCost(d);
-                  setCostErr(false);
-                })
-                .catch(function () {
-                  if (!alive) return;
-                  setCostErr(true);
-                });
+                .then(function (d) { if (!alive) return; setHist(d); setHistErr(false); })
+                .catch(function () { if (!alive) return; setHistErr(true); });
             };
             tick();
-            timer = globalThis.setInterval(tick, 1500);
-            return () => { alive = false; if (timer !== null) globalThis.clearInterval(timer); };
+            const timer = globalThis.setInterval(tick, 1500);
+            return () => { alive = false; globalThis.clearInterval(timer); };
           }, [open, sessionId]);
+          const costHoverProps = {
+            onMouseEnter: (e) => {
+              cancelHistClose();
+              setHistRect(e.currentTarget.getBoundingClientRect());
+              const panel = e.currentTarget.closest(".mg-panel");
+              setPanelRect(panel ? panel.getBoundingClientRect() : null);
+              openHist(true);
+            },
+            onMouseLeave: () => scheduleHistClose(),
+          };
 
           function currentCost() {
-            if (!cost || costErr) return null;
-            if (cost.steps === undefined || cost.steps === 0) return null;
-            const price = current === null ? undefined : priceFor(current.provider, current.model);
-            return estimateCost(price, cost);
+            if (!hist || histErr) return null;
+            const models = Array.isArray(hist.models) ? hist.models : [];
+            const totalSteps = typeof hist.totalSteps === "number" ? hist.totalSteps : 0;
+            if (totalSteps === 0) return null;
+            let total = 0;
+            let anyPriced = false;
+            let inT = 0, outT = 0, crT = 0, cwT = 0;
+            for (const m of models) {
+              inT += m.inputTokens || 0;
+              outT += m.outputTokens || 0;
+              crT += m.cacheReadTokens || 0;
+              cwT += m.cacheWriteTokens || 0;
+              const est = estimateCost(priceFor(m.provider, m.model), m);
+              if (est.hasPrice) { anyPriced = true; total += est.total; }
+            }
+            return {
+              total,
+              hasPrice: anyPriced,
+              inputTokens: inT,
+              outputTokens: outT,
+              cacheReadTokens: crT,
+              cacheWriteTokens: cwT,
+              steps: totalSteps,
+            };
           }
 
           function toggleOpen() {
@@ -707,8 +818,8 @@ window.__ModuleLoader__.load({
               err && React.createElement("div", { className: "mg-error" }, err),
               (function () {
                 const cc = currentCost();
-                if (!cc || costErr) {
-                  return costErr
+                if (!cc || histErr) {
+                  return histErr
                     ? React.createElement("div", { className: "mg-status" }, "cost endpoint unavailable")
                     : null;
                 }
@@ -722,11 +833,13 @@ window.__ModuleLoader__.load({
                     ? " · " + formatTokens(cc.cacheReadTokens + cc.cacheWriteTokens) + " cache"
                     : "");
                 if (!cc.hasPrice) {
-                  const note = current !== null && localFor(current.provider, current.model)
-                    ? "local model → no API cost"
-                    : (current !== null && subscriptionFor(current.provider, current.model)
-                      ? "subscription → no per-token price"
-                      : "no price data");
+                  // No model used in this session has a (reference) price.
+                  const usedModels = (hist && Array.isArray(hist.models)) ? hist.models : [];
+                  const allLocal = usedModels.length > 0 && usedModels.every((m) => localFor(m.provider, m.model));
+                  const anySub = usedModels.some((m) => subscriptionFor(m.provider, m.model));
+                  const note = allLocal
+                    ? "local models → no API cost"
+                    : (anySub ? "subscription → no per-token price" : "no price data");
                   return React.createElement("div", { className: "mg-cost" },
                     React.createElement("span", null, note,
                       React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
@@ -734,9 +847,13 @@ window.__ModuleLoader__.load({
                   );
                 }
                 const line = "approx cost: " + formatMoney(cc.total);
+                // The breakdown popup opens ONLY when hovering the cost
+                // figure itself — not the token detail or model label.
                 return React.createElement("div", { className: "mg-cost" },
                   React.createElement("span", null,
-                    line,
+                    React.createElement("span",
+                      Object.assign({ className: "mg-costbtn", title: "Hover: session cost breakdown" }, costHoverProps),
+                      line),
                     React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
                   )
                 );
@@ -831,6 +948,142 @@ window.__ModuleLoader__.load({
                 return ReactDOM.createPortal(tipEl, document.body);
               }
               return tipEl;
+            })(),
+            // ---- Session cost breakdown popup (hover over the cost figure) ----
+            // Sized exactly like the Model Garden panel and parked parallel
+            // on its LEFT side (1px gap). Interactive — the pointer can
+            // travel into it, scroll the step list (title + model summary
+            // stay pinned) and use the copy button. Pure read of existing
+            // session-log data via /model-garden/cost-history.
+            (function () {
+              if (!histOpen || !histRect || locked || !open) return null;
+              const anchor = panelRect || histRect;
+              // Same size as the Model Garden panel itself (width
+              // min(440px,100vw-32px), height = the panel's live height),
+              // parked parallel on its LEFT side with an 8px gap. Only when
+              // the room left of the panel runs out does the width shrink.
+              function popPos() {
+                const vh = typeof window === "undefined" ? 800 : window.innerHeight;
+                const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
+                const gap = 1;
+                const roomLeft = anchor.left - gap - 8; // viewport margin
+                const w = Math.min(
+                  panelRect ? panelRect.width : Math.min(440, vw - 32),
+                  Math.max(240, Math.floor(roomLeft)));
+                const h = panelRect ? panelRect.height : Math.min(480, vh - 96);
+                return {
+                  right: Math.max(1, vw - anchor.left + gap),
+                  top: Math.max(8, anchor.top),
+                  width: w,
+                  height: Math.min(h, vh - 16),
+                };
+              }
+              function portalOrInline(el) {
+                if (ReactDOM && typeof document !== "undefined" && document.body) {
+                  return ReactDOM.createPortal(el, document.body);
+                }
+                return el;
+              }
+              const popHover = { onMouseEnter: cancelHistClose, onMouseLeave: scheduleHistClose };
+              if (histErr) {
+                return portalOrInline(React.createElement("div", Object.assign({ className: "mg-costpop", style: popPos() }, popHover),
+                  React.createElement("div", { className: "mg-costpop-title" }, "Session breakdown"),
+                  React.createElement("div", { className: "mg-costpop-step dim" }, "history endpoint unavailable")
+                ));
+              }
+              if (!hist) {
+                return portalOrInline(React.createElement("div", Object.assign({ className: "mg-costpop", style: popPos() }, popHover),
+                  React.createElement("div", { className: "mg-costpop-title" }, "Session breakdown"),
+                  React.createElement("div", { className: "mg-costpop-step dim" }, "Loading…")
+                ));
+              }
+              const models = Array.isArray(hist.models) ? hist.models : [];
+              const steps = Array.isArray(hist.steps) ? hist.steps : [];
+              let totIn = 0, totOut = 0, totCache = 0;
+              for (const m of models) {
+                totIn += m.inputTokens || 0;
+                totOut += m.outputTokens || 0;
+                totCache += (m.cacheReadTokens || 0) + (m.cacheWriteTokens || 0);
+              }
+              function fallbackCopy(text) {
+                try {
+                  const ta = document.createElement("textarea");
+                  ta.value = text;
+                  ta.style.position = "fixed";
+                  ta.style.opacity = "0";
+                  document.body.appendChild(ta);
+                  ta.select();
+                  document.execCommand("copy");
+                  document.body.removeChild(ta);
+                } catch {}
+              }
+              function copyBreakdown() {
+                const lines = [
+                  "Session token usage — " + (typeof hist.totalSteps === "number" ? hist.totalSteps : steps.length) + " steps",
+                  "Total: " + totIn + " in / " + totOut + " out / " + totCache + " cache",
+                ];
+                for (const m of models) {
+                  lines.push(m.provider + "::" + m.model + ": " + m.steps + "x — " +
+                    (m.inputTokens || 0) + " in / " + (m.outputTokens || 0) + " out / " +
+                    ((m.cacheReadTokens || 0) + (m.cacheWriteTokens || 0)) + " cache");
+                }
+                const text = lines.join("\n");
+                const done = () => {
+                  setCopied(true);
+                  globalThis.setTimeout(() => setCopied(false), 1500);
+                };
+                const fb = () => { fallbackCopy(text); done(); };
+                if (globalThis.navigator && globalThis.navigator.clipboard && globalThis.navigator.clipboard.writeText) {
+                  globalThis.navigator.clipboard.writeText(text).then(done, fb);
+                } else fb();
+              }
+              const modelRows = models.map((m) => {
+                const price = priceFor(m.provider, m.model);
+                const est = estimateCost(price, {
+                  inputTokens: m.inputTokens, outputTokens: m.outputTokens,
+                  cacheReadTokens: m.cacheReadTokens, cacheWriteTokens: m.cacheWriteTokens,
+                });
+                const money = est.hasPrice ? " · ≈ " + formatMoney(est.total) : "";
+                const cache = (m.cacheReadTokens || 0) + (m.cacheWriteTokens || 0);
+                return React.createElement("div", { key: m.provider + "::" + m.model, className: "mg-costpop-row" },
+                  React.createElement("span", { className: "mg-costpop-name" }, m.model),
+                  React.createElement("span", { className: "mg-costpop-val" },
+                    m.steps + "× · " + formatTokens(m.inputTokens) + " in / " + formatTokens(m.outputTokens) + " out / " +
+                    formatTokens(cache) + " cache" + money)
+                );
+              });
+              const stepRows = steps.map((s, i) => {
+                let ts = "";
+                try {
+                  const d = new Date(s.time);
+                  ts = d.toLocaleDateString([], { day: "2-digit", month: "2-digit" }) + " " +
+                       d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                } catch {}
+                const cache = (s.cacheReadTokens || 0) + (s.cacheWriteTokens || 0);
+                return React.createElement("div", { key: "s" + i, className: "mg-costpop-step" },
+                  React.createElement("span", { className: "mg-costpop-time" }, ts),
+                  React.createElement("span", { className: "mg-costpop-name" }, s.model),
+                  React.createElement("span", { className: "mg-costpop-val" },
+                    formatTokens(s.inputTokens) + " in / " + formatTokens(s.outputTokens) + " out" +
+                    (cache > 0 ? " / " + formatTokens(cache) + " cache" : ""))
+                );
+              });
+              const popEl = React.createElement("div", Object.assign({ className: "mg-costpop", style: popPos() }, popHover),
+                React.createElement("div", { className: "mg-costpop-title" },
+                  React.createElement("span", null,
+                    "Session breakdown · " + (typeof hist.totalSteps === "number" ? hist.totalSteps : steps.length) + " steps"),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-costpop-copy",
+                    onClick: copyBreakdown,
+                    title: "Copy token breakdown (in / out / cache)",
+                  }, copied ? "✓ copied" : "copy")
+                ),
+                modelRows,
+                steps.length > 0 && React.createElement("div", { className: "mg-costpop-sep" }),
+                React.createElement("div", { className: "mg-costpop-scroll" }, stepRows)
+              );
+              return portalOrInline(popEl);
             })()
           );
         }

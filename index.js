@@ -110,6 +110,72 @@ function aggregateUsage(events) {
   }
 }
 
+/**
+ * Per-step session cost history with model attribution.
+ *
+ * `assistant/message` events carry usage but NOT the model. The model in
+ * effect is tracked from `request/context` ({ provider, model }) and
+ * `request/header` ({ header: { config: { provider, model } } }) events,
+ * which precede the request they describe. Every usage step is attributed
+ * to the most recent config seen before it — a single pass over the same
+ * in-memory event array `/cost` uses, no extra persistence.
+ *
+ * -> { steps: [newest first, capped], models: [per-model aggregates], totalSteps }
+ */
+function buildHistory(events, limit) {
+  let provider = null
+  let model = null
+  const steps = []
+  const models = {}
+  if (Array.isArray(events)) {
+    for (const ev of events) {
+      if (!ev) continue
+      const data = ev.data && typeof ev.data === 'object' ? ev.data : undefined
+      if (ev.type === 'request/context' || ev.type === 'request/header') {
+        let cfg = null
+        if (ev.type === 'request/context') cfg = data
+        else if (data && data.header && data.header.config) cfg = data.header.config
+        if (cfg && typeof cfg.model === 'string') {
+          model = cfg.model
+          provider = typeof cfg.provider === 'string' ? cfg.provider : provider
+        }
+        continue
+      }
+      if (ev.type !== 'assistant/message' || !data) continue
+      const usage = data.usage !== undefined ? data.usage : ev.usage
+      if (!usage || typeof usage !== 'object') continue
+      // Never drop usage: steps before the first request/context (or in
+      // logs without any) are counted under "unknown" so the totals always
+      // match /cost instead of silently shrinking.
+      const entry = {
+        time: typeof ev.time === 'number' ? ev.time : 0,
+        provider: provider || '?',
+        model: model === null ? 'unknown' : model,
+        turn: typeof data.turn === 'number' ? data.turn : undefined,
+        step: typeof data.step === 'number' ? data.step : undefined,
+        inputTokens: typeof usage.inputTokens === 'number' ? usage.inputTokens : 0,
+        outputTokens: typeof usage.outputTokens === 'number' ? usage.outputTokens : 0,
+        cacheReadTokens: typeof usage.cacheReadTokens === 'number' ? usage.cacheReadTokens : 0,
+        cacheWriteTokens: typeof usage.cacheWriteTokens === 'number' ? usage.cacheWriteTokens : 0,
+        reasoningTokens: typeof usage.reasoningTokens === 'number' ? usage.reasoningTokens : 0,
+      }
+      steps.push(entry)
+      const key = entry.provider + '::' + entry.model
+      const agg = models[key] || (models[key] = {
+        provider: entry.provider, model: entry.model,
+        steps: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      })
+      agg.steps += 1
+      agg.inputTokens += entry.inputTokens
+      agg.outputTokens += entry.outputTokens
+      agg.cacheReadTokens += entry.cacheReadTokens
+      agg.cacheWriteTokens += entry.cacheWriteTokens
+    }
+  }
+  const max = Math.min(Math.max(1, limit || 40), 200)
+  return { steps: steps.slice(-max).reverse(), models: Object.values(models), totalSteps: steps.length }
+}
+
 function writeJson(res, status, body) {
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
@@ -237,6 +303,25 @@ export function apply(ctx) {
           .catch((err) => writeJson(res, 500, { error: String(err && err.message ? err.message : err) }))
       },
     }), 'model-garden: /model-garden/catalog route')
+    ctx.effect(() => webServer.register({
+      kind: 'exact',
+      path: '/model-garden/cost-history',
+      handler: (req, res) => {
+        const url = new URL(req.url ?? '', 'http://127.0.0.1')
+        const sessionId = url.searchParams.get('session')
+        if (!sessionId) return writeJson(res, 400, { error: 'missing session' })
+        const limit = Number.parseInt(url.searchParams.get('limit') ?? '40', 10)
+        const sessions = ctx.get('sessions')
+        const session = sessions === undefined ? undefined : sessions.get(sessionId)
+        if (!session) return writeJson(res, 404, { error: 'session not found' })
+        try {
+          const events = session.events !== undefined ? session.events : []
+          writeJson(res, 200, buildHistory(events, Number.isFinite(limit) ? limit : 40))
+        } catch (err) {
+          writeJson(res, 500, { error: String(err && err.message ? err.message : err) })
+        }
+      },
+    }), 'model-garden: /model-garden/cost-history route')
   }
   mount()
   // `internal/service` fires whenever any service is provided; the listener
