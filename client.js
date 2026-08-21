@@ -55,17 +55,32 @@ window.__ModuleLoader__.load({
         ".mg-outer { position: relative; }",
         ".mg-backdrop { position: fixed; inset: 0; z-index: 19; background: transparent; border: none; padding: 0; margin: 0; cursor: default; }",
         // Trigger — same geometry as the native ModelSelect trigger (28px pill).
+        // Wrapped in a row so a reasoning-effort dropdown can sit next to it.
+        ".mg-trigger-row { display: inline-flex; align-items: center; gap: 6px; }",
         ".mg-trigger { display: inline-flex; align-items: center; gap: 4px; height: 28px; min-width: 0; max-width: 220px; padding: 0 4px 0 8px; border: none; border-radius: 24px; outline: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; }",
         ".mg-trigger:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-trigger:focus-visible { box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); }",
         ".mg-trigger.locked { color: var(--dsw-alias-label-dimmed); cursor: default; }",
+        // Reasoning-effort trigger: visually identical to the model trigger.
+        ".mg-effort-outer { position: relative; display: inline-flex; align-items: center; }",
+        ".mg-effort-trigger { max-width: 110px; }",
+        ".mg-effort-label { flex: 0 1 auto; }",
+        // The floating effort menu — same surface, border, radius, shadow and
+        // z-order as the model picker panel (--mg-panel-bg).
+        ".mg-effort-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 20; width: 168px; max-height: 320px; overflow-y: auto; padding: 4px; border: 1px solid var(--dsw-alias-border-inverted); border-radius: 12px; box-shadow: var(--dsw-shadow-lv3); --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); color: var(--dsw-alias-label-primary); }",
+        ".mg-effort-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: none; border-radius: 8px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; font-weight: 500; line-height: 20px; text-align: left; cursor: pointer; }",
+        ".mg-effort-item:hover { background: var(--dsw-alias-interactive-bg-hover); }",
+        ".mg-effort-item.active { color: var(--dsw-alias-state-business-primary); }",
+        ".mg-effort-item-check { margin-left: auto; flex: none; }",
         ".mg-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }",
         ".mg-chev { flex: none; color: var(--dsw-alias-label-caption); font-size: 10px; transition: transform var(--ds-transition-duration-fast, .12s) var(--ds-ease-in-out, ease); }",
-        ".mg-outer.open .mg-chev { transform: rotate(180deg); }",
+        // Rotation follows each trigger's OWN expanded state — the model
+        // chevron and the effort chevron never rotate each other.
+        ".mg-trigger[aria-expanded='true'] .mg-chev { transform: rotate(180deg); }",
         // Panel — native menu geometry (radius 12, lv3 shadow) but FIXED size,
         // and a surface slightly darker than the chat background.
         ".mg-panel { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 20; display: flex; flex-direction: column; width: min(440px, 100vw - 32px); height: min(480px, 100vh - 96px); overflow: hidden; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); border: 1px solid var(--dsw-alias-border-inverted); border-radius: 12px; box-shadow: var(--dsw-shadow-lv3); color: var(--dsw-alias-label-primary); --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }",
-        "@supports (background: color-mix(in srgb, red, blue)) { .mg-panel { --mg-panel-bg: color-mix(in srgb, var(--dsw-specific-menu), #000 10%); } }",
+        "@supports (background: color-mix(in srgb, red, blue)) { .mg-panel, .mg-tooltip, .mg-costpop, .mg-effort-menu { --mg-panel-bg: color-mix(in srgb, var(--dsw-specific-menu), #000 10%); } }",
         ".mg-search { display: flex; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); }",
         ".mg-search input { flex: 1; min-width: 0; box-sizing: border-box; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 20px; outline: none; }",
         ".mg-search input::placeholder { color: var(--dsw-alias-label-dimmed); }",
@@ -108,6 +123,8 @@ window.__ModuleLoader__.load({
         ".mg-error { margin: 4px 8px 0; padding: 7px 8px; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; }",
         ".mg-cost { padding: 6px 10px; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-business-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
         ".mg-cost-detail { color: var(--dsw-alias-label-tertiary); }",
+        // The reasoning-effort choice lives in the chat composer next to the
+        // model name (mg-effort-outer/menu) — no UI for it inside the panel.
         // The cost figure sits inside an INVISIBLE padded hover target that
         // reaches all the way to the row's LEFT edge (negative margin eats
         // the row's left padding) — comfortable to hit, nothing drawn,
@@ -115,7 +132,7 @@ window.__ModuleLoader__.load({
         ".mg-costbtn { display: inline-block; padding: 1px 8px 1px 10px; margin: -1px 0 -1px -10px; border: 1px solid transparent; border-radius: 8px; cursor: help; }",
         // Interactive popup: the pointer may enter it, scroll the step list
         // and press the copy button.
-        ".mg-costpop { position: fixed; z-index: 1001; display: flex; flex-direction: column; box-sizing: border-box; width: 380px; overflow: hidden; padding: 9px 11px; border-radius: 10px; background: var(--dsw-alias-tooltip-bg); box-shadow: var(--dsw-shadow-lv2); pointer-events: auto; font-size: 12px; line-height: 18px; color: var(--dsw-static-neutral-bluish-50); overscroll-behavior: contain; }",
+        ".mg-costpop { position: fixed; z-index: 1001; display: flex; flex-direction: column; box-sizing: border-box; width: 380px; overflow: hidden; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-shadow-lv2); pointer-events: auto; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); overscroll-behavior: contain; }",
         // Only the step list scrolls; title + model summary stay pinned.
         // flex:1 + min-height:0 is what makes the scroll area reachable
         // to its very top (a plain overflow-y:auto flex child clips it).
@@ -137,13 +154,13 @@ window.__ModuleLoader__.load({
         // Tooltip — harness tooltip surface (dark in both themes). Rendered
         // through a body portal (see below), so it must win against every app
         // stacking context: z-index well above panels/menus.
-        ".mg-tooltip { position: fixed; z-index: 1000; min-width: 200px; max-width: 320px; padding: 9px 11px; border-radius: 10px; background: var(--dsw-alias-tooltip-bg); box-shadow: var(--dsw-shadow-lv2); pointer-events: none; font-size: 12px; line-height: 18px; color: var(--dsw-static-neutral-bluish-50); }",
+        ".mg-tooltip { position: fixed; z-index: 1000; min-width: 200px; max-width: 320px; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-shadow-lv2); pointer-events: none; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
         ".mg-tt-name { font-size: 13px; font-weight: 600; line-height: 20px; margin-bottom: 2px; }",
-        ".mg-tt-prov { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-static-deepseek-300); margin-bottom: 5px; }",
-        ".mg-tt-id { font-family: var(--ds-font-family-code); font-size: 10.5px; color: var(--dsw-static-neutral-bluish-300); margin: 2px 0 5px; word-break: break-all; }",
-        ".mg-tt-desc { color: var(--dsw-static-neutral-bluish-200); margin-bottom: 6px; }",
-        ".mg-tt-row { font-size: 10.5px; color: var(--dsw-static-neutral-bluish-300); }",
-        ".mg-tt-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; padding-top: 5px; border-top: 1px solid rgba(255,255,255,.12); font-size: 10.5px; color: var(--dsw-static-neutral-bluish-400); }"
+        ".mg-tt-prov { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-state-business-primary); margin-bottom: 5px; }",
+        ".mg-tt-id { font-family: var(--ds-font-family-code); font-size: 10.5px; color: var(--dsw-alias-label-secondary); margin: 2px 0 5px; word-break: break-all; }",
+        ".mg-tt-desc { color: var(--dsw-alias-label-secondary); margin-bottom: 6px; }",
+        ".mg-tt-row { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }",
+        ".mg-tt-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 10.5px; color: var(--dsw-alias-label-caption); }"
       ].join("\n");
       document.head.appendChild(tag);
     }
@@ -486,6 +503,9 @@ window.__ModuleLoader__.load({
           const [sortDir, setSortDir] = React.useState("asc");
           const [, setUiTick] = React.useState(0);
           const [tip, setTip] = React.useState(null); // {g, m, left, top} | null
+          // Effort dropdown (styled like the model picker) next to the model
+          // name in the chat composer.
+          const [effortOpen, setEffortOpen] = React.useState(false);
 
           const locked = props.locked === true || props.available === false;
           const groups = state === null || state.groups === undefined ? [] : state.groups;
@@ -493,6 +513,29 @@ window.__ModuleLoader__.load({
           const status = state === null || state.status === undefined ? "idle" : state.status;
           const err = state === null || state.error === undefined ? null : state.error;
 
+          // Reasoning info of the currently selected model. The trigger label
+          // just shows the model name; any effort level is chosen via a
+          // compact dropdown right next to it in the chat composer
+          // (no "(max)" suffix).
+          function findCurrentModel() {
+            if (current === null) return null;
+            for (const g of groups) {
+              if (String(g.id) !== String(current.provider)) continue;
+              for (const m of g.models) {
+                if (String(m.id) === String(current.model)) return m;
+              }
+            }
+            return null;
+          }
+          const curModelObj = findCurrentModel();
+          const currentEfforts = (curModelObj && curModelObj.reasoning && curModelObj.reasoning.efforts) || [];
+          const currentEffort = (function () {
+            if (current !== null && current.reasoningEffort !== undefined) return String(current.reasoningEffort);
+            if (curModelObj && curModelObj.reasoning && curModelObj.reasoning.defaultEffort !== undefined) {
+              return String(curModelObj.reasoning.defaultEffort);
+            }
+            return "";
+          })();
           const currentLabel = current === null ? null : (String(current.model) || null);
           const q = query.trim().toLowerCase();
 
@@ -543,14 +586,17 @@ window.__ModuleLoader__.load({
           }
 
           React.useEffect(() => {
-            if (!open) return;
+            if (!open && !effortOpen) return;
             function onKey(e) {
-              if (e.key === "Escape") { setOpen(false); setTip(null); }
+              if (e.key !== "Escape") return;
+              if (effortOpen) setEffortOpen(false);
+              else { setOpen(false); setTip(null); }
             }
             const d = globalThis.document;
             d.addEventListener("keydown", onKey);
             return () => d.removeEventListener("keydown", onKey);
-          }, [open]);
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+          }, [open, effortOpen]);
 
           // Refresh the advisory directory + prices + host catalog on open.
           React.useEffect(() => {
@@ -671,7 +717,7 @@ window.__ModuleLoader__.load({
           function toggleOpen() {
             if (locked) return;
             if (open) { setOpen(false); setTip(null); return; }
-            setOpen(true); setQuery(""); setTip(null);
+            setOpen(true); setQuery(""); setTip(null); setEffortOpen(false);
           }
           // Table-header click: asc → desc → off (back to provider groups).
           function toggleSort(key) {
@@ -685,6 +731,15 @@ window.__ModuleLoader__.load({
             props.select(sel);
             setOpen(false);
             setTip(null);
+          }
+          // Effort chosen from the compact dropdown next to the model name
+          // in the chat composer: re-select the current model with that
+          // effort. Opening one picker always closes the other.
+          function pickChatEffort(value) {
+            if (current === null) return;
+            props
+              .select({ provider: current.provider, model: current.model, reasoningEffort: value })
+              .then(function () { setUiTick((t) => t + 1); }, function () {});
           }
           // Tooltip opens BESIDE the panel, its RIGHT edge always flush
           // against the panel's LEFT edge (anchored via style.right, so any
@@ -750,17 +805,61 @@ window.__ModuleLoader__.load({
           }
 
           return React.createElement("div", { className: "mg-outer" + (open ? " open" : "") },
-            React.createElement("button", {
-              type: "button",
-              className: "mg-trigger" + (locked ? " locked" : ""),
-              title: currentLabel === null ? "Select model" : "Model: " + currentLabel,
-              onClick: toggleOpen,
-              disabled: locked,
-              "aria-haspopup": "listbox",
-              "aria-expanded": open,
-            },
-              React.createElement("span", { className: "mg-label" }, currentLabel === null ? "Select model" : currentLabel),
-              React.createElement("span", { className: "mg-chev" }, "▾")
+            React.createElement("div", { className: "mg-trigger-row" },
+              React.createElement("button", {
+                type: "button",
+                className: "mg-trigger" + (locked ? " locked" : ""),
+                title: currentLabel === null ? "Select model" : "Model: " + currentLabel,
+                onClick: toggleOpen,
+                disabled: locked,
+                "aria-haspopup": "listbox",
+                "aria-expanded": open,
+              },
+                React.createElement("span", { className: "mg-label" }, currentLabel === null ? "Select model" : currentLabel),
+                React.createElement("span", { className: "mg-chev" }, "▾")
+              ),
+              // Reasoning-effort picker right next to the model name — same
+              // trigger style and floating menu design as the model picker.
+              !locked && currentEfforts.length > 0 && React.createElement("div", {
+                className: "mg-effort-outer",
+              },
+                React.createElement("button", {
+                  type: "button",
+                  className: "mg-trigger mg-effort-trigger",
+                  title: "Reasoning effort: " + currentEffort,
+                  // Opening one picker always closes the other.
+                  onClick: () => { setOpen(false); setTip(null); setEffortOpen(!effortOpen); },
+                  "aria-haspopup": "listbox",
+                  "aria-expanded": effortOpen,
+                },
+                  React.createElement("span", { className: "mg-label mg-effort-label" },
+                    currentEffort === "" ? "effort" : currentEffort),
+                  React.createElement("span", { className: "mg-chev" }, "▾")
+                ),
+                effortOpen && React.createElement("button", {
+                  type: "button",
+                  className: "mg-backdrop",
+                  "aria-label": "Close effort picker",
+                  onClick: () => setEffortOpen(false),
+                }),
+                effortOpen && React.createElement("div", { className: "mg-effort-menu", role: "listbox" },
+                  currentEfforts.map((ef) => {
+                    const v = String(ef.id !== undefined && ef.id !== null ? ef.id : ef.name);
+                    const active = v === currentEffort;
+                    return React.createElement("button", {
+                      type: "button",
+                      key: v,
+                      className: "mg-effort-item" + (active ? " active" : ""),
+                      role: "option",
+                      "aria-selected": active,
+                      onClick: () => { pickChatEffort(v); setEffortOpen(false); },
+                    },
+                      React.createElement("span", { className: "mg-effort-item-name" }, ef.name || ef.id),
+                      active && React.createElement("span", { className: "mg-effort-item-check" }, "✓")
+                    );
+                  })
+                )
+              )
             ),
             open && !locked && React.createElement("button", {
               type: "button",
