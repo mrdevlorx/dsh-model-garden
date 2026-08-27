@@ -18,6 +18,7 @@ A searchable, sortable **model picker** for the [DeepSeek Harness](https://githu
 - **⭐ Favorites** — star models, toggle favorites-only from the table header; persisted in `localStorage`
 - **🏠 Local tag** — providers are flagged *local* by their real endpoint (baseURL from settings: loopback / RFC1918 / LAN hostnames), never by price guesswork; the **Local** box next to the search input filters to them
 - **▾ Collapsible provider groups** — collapse state is persisted per provider
+- **🔄 Auto model-list update** — while the picker is mounted, the provider/model directory is re-loaded automatically every 5 minutes (configurable), so locally added models show up without reopening the panel
 - **💰 Model prices** from [models.dev](https://models.dev) (the same source OpenCode uses), shown as `$input/$output` per 1M tokens, cached for 24 h. **Subscription routes** (all-zero cost in the catalog, e.g. coding-plan providers) resolve a *reference price* from their pay-as-you-go provider via `PROVIDER_ALIASES`, so plan models still show what their tokens would cost at API rates; only true **local** models stay unpriced
 - **🧠 Context windows** — read live from the host `llm` service (adapter-owned data, works for **local** providers like llama.cpp / Ollama-style gateways too), with models.dev as fallback
 - **🎚️ Reasoning effort picker** — models that support reasoning levels get a compact dropdown right next to the model name in the chat composer, styled and opening **exactly like the model picker** (same trigger pill, same floating menu surface, ✓ marks the active level, click outside / `Esc` / selecting closes it). Picking a model **always starts it at its strongest reasoning level**; the dropdown re-selects the current model with the chosen effort — no clutter inside the picker panel
@@ -79,8 +80,9 @@ If you manage the profile with plain npm: add the dependency, list `dsh-model-ga
 
 ## Configuration
 
-No configuration is required. Two behaviors can be adjusted at the top of the respective file:
+No configuration is required. Several tweakable constants live at the top of the respective file:
 
+- **Auto model-list update interval** — `MODEL_LIST_REFRESH_MS` in `client.js` (default 5 min) controls how often the provider/model directory is reloaded while the picker is mounted.
 - **Hidden provider routes** — `HIDDEN_PROVIDER_PREFIXES` in `client.js` (and `SKIP_PREFIXES` in `index.js`). Some plugins mirror providers as internal routes (e.g. a vision toolkit duplicating every provider as `vision-toolkit-<id>`); such prefixes are excluded from the picker and the catalog.
 - **Price aliases** — `PROVIDER_ALIASES` / `MODEL_ALIASES` in `client.js` map DSH route ids to models.dev catalog ids. They serve two cases: renamed routes (`deepseek-official` → `deepseek`) and subscription routes whose catalog entry is all-zero (`kimi-for-coding` → `moonshotai`, `alibaba-tp` → `alibaba-cn`, `oneprovider` → `anthropic`), giving plan models their pay-as-you-go reference price.
 - **Price cache TTL** — `PRICE_TTL` (default 24 h) and **catalog TTL** — `CATALOG_TTL` (default 10 min).

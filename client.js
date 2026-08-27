@@ -230,6 +230,9 @@ window.__ModuleLoader__.load({
     const PRICE_URL = "https://models.dev/api.json";
     const PRICE_TTL = 86400000; // refresh at most once per day
     const PRICE_RETRY = 30000; // after a failed fetch wait 30s before retrying
+    // Auto model-list update: re-load the provider/model directory while the
+    // picker is mounted so newly added models appear without reopening.
+    const MODEL_LIST_REFRESH_MS = 5 * 60 * 1000; // every 5 minutes
     let priceMap = null; // { "provider::model": { input?, output?, cacheRead?, cacheWrite?, context?, maxOutput? } }
     let pricesFailedAt = 0;
 
@@ -500,6 +503,19 @@ window.__ModuleLoader__.load({
               props.load();
             }
           }, [props.available]);
+
+          // Auto model-list update: periodically re-load the directory while
+          // the picker is mounted, so newly added/removed providers + models
+          // show up without reopening the panel. Skipped while the tab is
+          // hidden. The store subscription above picks up the fresh snapshot.
+          React.useEffect(() => {
+            if (!(props.available && props.load)) return;
+            const id = globalThis.setInterval(() => {
+              if (globalThis.document && globalThis.document.hidden) return;
+              props.load();
+            }, MODEL_LIST_REFRESH_MS);
+            return () => globalThis.clearInterval(id);
+          }, [props.available, props.load]);
 
           const [open, setOpen] = React.useState(false);
           const [query, setQuery] = React.useState("");
