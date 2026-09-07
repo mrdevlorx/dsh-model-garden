@@ -641,9 +641,33 @@ window.__ModuleLoader__.load({
             setRefreshBusy(true);
             setRefreshResult(null);
             globalThis.fetch("/model-garden/refresh-models", { method: "POST" })
-              .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+              // Read the body as text first: an error response may be empty
+              // (405/404 from a stale host, HTML from an SPA fallback) and
+              // r.json() would only surface a cryptic engine message
+              // ("Unexpected end of JSON input" / "did not match the expected
+              // pattern") instead of telling the user what to do.
+              .then(function (r) {
+                return r.text().then(function (text) {
+                  var d = null;
+                  try { d = JSON.parse(text); } catch { /* non-JSON body */ }
+                  return { ok: r.ok, status: r.status, d: d, text: text };
+                });
+              })
               .then(function (out) {
-                setRefreshResult(out.ok ? out.d : { error: out.d && out.d.error ? out.d.error : "refresh failed" });
+                if (out.ok && out.d) {
+                  setRefreshResult(out.d);
+                } else if (!out.ok && out.d && out.d.error) {
+                  setRefreshResult({ error: out.d.error });
+                } else {
+                  // No usable payload: 405/404 = the host half of this plugin
+                  // is not loaded (model-garden needs a reload), 503/HTML = a
+                  // service is not ready. Name the fix instead of the engine
+                  // message.
+                  var hint = (out.status === 405 || out.status === 404)
+                    ? "refresh failed: the model-garden host route is not loaded — reload the dsh plugin (Settings → Plugins → dsh-model-garden: disable/enable) or restart dsh (HTTP " + out.status + ")"
+                    : "refresh failed (HTTP " + out.status + (out.text ? ": " + out.text.slice(0, 120) : "") + ")";
+                  setRefreshResult({ error: hint });
+                }
                 // directory + live inventory see the freshly written lists
                 if (props.available && props.load) props.load();
                 fetchServerModels();
