@@ -16,6 +16,7 @@ A searchable, sortable **model picker** for the [DeepSeek Harness](https://githu
 - **🔍 Instant search** across model names and descriptions
 - **📊 Sortable table columns** — click `Name`, `Ctx` or `Price` to sort asc/desc; a third click returns to the provider-grouped view
 - **⭐ Favorites** — star models, toggle favorites-only from the table header; persisted in `localStorage`
+- **🙈 Hide & shrink** — a blacklist to make the picker smaller: hover a row and click **✕** to hide that model (or **✕** on a group header to hide a whole provider), then manage everything from the **⚙** button in the search bar — list what is hidden, un-hide single entries or click *show all*. Persisted in `localStorage`, so your trimmed list survives reloads; hidden settings never touch the DSH configuration document
 - **🏠 Local tag** — providers are flagged *local* by their real endpoint (baseURL from settings: loopback / RFC1918 / LAN hostnames), never by price guesswork; the **Local** box next to the search input filters to them
 - **▾ Collapsible provider groups** — collapse state is persisted per provider
 - **🔄 Auto model-list update** — while the picker is mounted, the provider/model directory is re-loaded automatically every 5 minutes (configurable), so locally added models show up without reopening the panel
@@ -34,7 +35,25 @@ The package is a **static profile plugin** with two halves:
 | Half | File | Role |
 |---|---|---|
 | Client | `client.js` | Registers the `conversation.input.model` slot (priority `-1`, shadowing the native seat) and renders the picker |
-| Host | `index.js` | Serves three same-origin JSON routes on the harness `webServer` service |
+| Host | `index.js` | Serves same-origin JSON routes on the harness `webServer` service (cost, cost-history, catalog, server-models, refresh-models) |
+
+### Refresh button (⟳ in the picker)
+
+A **⟳** button in the picker's search row re-syncs **every configured `llm-pi-ai` provider** from its live model API:
+
+```
+POST /model-garden/refresh-models
+  → { summary, invalidateCatalog, results: [ { id, ok, changed, total, added, removed, error } ] }
+```
+
+The host reads the configured provider routes from the settings service, resolves each credential through the **credentials service** (`~/.dsh/.credentials.yaml`) with process env as fallback, queries the provider's OpenAI-compatible `GET {baseURL}/models`, and merges the live ids into the settings `models` lists — **existing entries keep every hand-tuned field and their order**, new ids arrive as minimal entries (OpenRouter entries carry live metadata), removed ids drop out. Changed lists are written back comment-preserving and hot-reload through `llm-pi-ai`, exactly as if a human had edited `settings.yaml`. A one-line German summary plus a per-provider tooltip report the result right in the picker.
+
+The same logic is available as a standalone CLI that works without a running DSH — handy for cron or scripting:
+
+```
+node dsh-model-garden/bin/refresh-models.mjs [--dry-run] [--provider <id>]
+       [--keep-removed] [--timeout-ms <ms>] [--home <dsh-home>]
+```
 
 ### Host endpoints
 
@@ -87,7 +106,7 @@ No configuration is required. Several tweakable constants live at the top of the
 - **Price aliases** — `PROVIDER_ALIASES` / `MODEL_ALIASES` in `client.js` map DSH route ids to models.dev catalog ids. They serve two cases: renamed routes (`deepseek-official` → `deepseek`) and subscription routes whose catalog entry is all-zero (`kimi-for-coding` → `moonshotai`, `alibaba-tp` → `alibaba-cn`, `oneprovider` → `anthropic`), giving plan models their pay-as-you-go reference price.
 - **Price cache TTL** — `PRICE_TTL` (default 24 h) and **catalog TTL** — `CATALOG_TTL` (default 10 min).
 
-Favorites, collapsed providers and the price cache live in the browser's `localStorage` under `dsh.modelgarden.*`.
+Favorites, collapsed providers, the hidden-models/provider blacklist (`dsh.modelgarden.hidden`) and the price cache live in the browser's `localStorage` under `dsh.modelgarden.*`.
 
 ## Compatibility
 

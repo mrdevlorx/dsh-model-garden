@@ -88,8 +88,12 @@ window.__ModuleLoader__.load({
         ".mg-local { flex: none; display: inline-flex; align-items: center; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; }",
         ".mg-local:hover { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-local.on { background: var(--dsw-alias-state-business-tertiary); border-color: transparent; color: var(--dsw-alias-state-business-primary); }",
+        // Refresh (⟳) button shares the toggle geometry; while busy it stays
+        // highlighted (:disabled blocks clicks, the ellipsis signals work).
+        ".mg-refresh { padding: 0 9px; font-size: 14px; }",
+        ".mg-refresh:disabled { cursor: wait; }",
         // Table header — clickable column titles, table-style sorting.
-        ".mg-thead { display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); background: var(--mg-panel-bg, var(--dsw-specific-menu)); font-size: 11px; font-weight: 600; line-height: 16px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); }",
+        ".mg-thead { display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px 24px; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); background: var(--mg-panel-bg, var(--dsw-specific-menu)); font-size: 11px; font-weight: 600; line-height: 16px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); }",
         ".mg-th { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: none; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; cursor: pointer; }",
         ".mg-th:hover { color: var(--dsw-alias-label-primary); }",
         ".mg-th.active { color: var(--dsw-alias-state-business-primary); }",
@@ -108,7 +112,7 @@ window.__ModuleLoader__.load({
         // Option rows — SAME fixed-width raster as .mg-thead: every row is its
         // own grid container, so `auto` columns would size per row and break
         // column alignment. Fixed px widths keep all rows in lockstep.
-        ".mg-model { display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px; align-items: center; gap: 8px; width: 100%; min-height: 38px; box-sizing: border-box; padding: 6px 8px; border: none; border-radius: 10px; outline: none; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }",
+        ".mg-model { display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px 24px; align-items: center; gap: 8px; width: 100%; min-height: 38px; box-sizing: border-box; padding: 6px 8px; border: none; border-radius: 10px; outline: none; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }",
         ".mg-model:hover, .mg-model:focus-visible { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-check { text-align: center; font-size: 12px; line-height: 1; color: var(--dsw-alias-label-primary); }",
         ".mg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; line-height: 20px; }",
@@ -118,6 +122,24 @@ window.__ModuleLoader__.load({
         ".mg-star { cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 3px; border-radius: 4px; text-align: center; color: var(--dsw-alias-label-caption); opacity: .6; }",
         ".mg-model:hover .mg-star { opacity: 1; }",
         ".mg-star.on { color: var(--dsw-alias-state-warn-primary); opacity: 1; }",
+        // Hide-from-list (✕) shares the star's row geometry — a small
+        // right-side button that only appears on hover. Clicking blacklists
+        // the model (or whole provider) so the picker list shrinks.
+        ".mg-hide { cursor: pointer; font-size: 12px; line-height: 1; padding: 2px 3px; border-radius: 4px; text-align: center; color: var(--dsw-alias-label-caption); opacity: 0; }",
+        ".mg-model:hover .mg-hide, .mg-grouphead:hover .mg-hide { opacity: 1; }",
+        ".mg-hide.on { color: var(--dsw-alias-state-business-primary); opacity: 1; }",
+        // Hidden-settings popup: a compact card listing the blacklisted
+        // providers and models, each with a "show" link to un-hide.
+        ".mg-hidepanel { position: absolute; left: 8px; right: 8px; top: 48px; z-index: 5; display: flex; flex-direction: column; box-sizing: border-box; max-height: 300px; overflow: hidden; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-shadow-lv2); font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
+        ".mg-hidepanel-title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 2px; }",
+        ".mg-hidepanel-clear { margin-left: auto; flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid rgba(128,140,160,.45); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; }",
+        ".mg-hidepanel-sect { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); margin: 6px 0 2px; }",
+        ".mg-hidepanel-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }",
+        ".mg-hideitem { display: flex; align-items: center; gap: 6px; padding: 1px 0; font-size: 11.5px; }",
+        ".mg-hideitem-prov { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-caption); flex: none; }",
+        ".mg-hideitem-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+        ".mg-hideitem-show { flex: none; height: 18px; padding: 0 7px; border-radius: 6px; border: 1px solid rgba(128,140,160,.45); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 16px; cursor: pointer; }",
+        ".mg-hidepanel-empty { color: var(--dsw-alias-label-tertiary); font-style: italic; }",
         ".mg-empty { padding: 10px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }",
         ".mg-status { padding: 6px 10px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }",
         ".mg-error { margin: 4px 8px 0; padding: 7px 8px; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; }",
@@ -220,6 +242,64 @@ window.__ModuleLoader__.load({
       if (i === -1) list.push(provider); else list.splice(i, 1);
       collCache = list;
       persistList(COLL_KEY, list);
+    }
+
+    // ---- Hidden models/providers blacklist: localStorage, memoized ----
+    // "Hide" is a personal display preference: removing models (or whole
+    // providers) shrinks the picker to what the user actually wants to see —
+    // a fast alternative to entering a search query every time. Stored like
+    // favorites/collapse state, so it survives reloads. Model keys use the
+    // same "provider::model" convention as favorites; provider ids are kept
+    // in a parallel list so a whole group can vanish at once.
+    const HIDDEN_KEY = "dsh.modelgarden.hidden"; // { providers: [], models: [] }
+    let hiddenCache = null;
+    function readHidden() {
+      if (hiddenCache === null) {
+        let providers = [], models = [];
+        try {
+          const raw = globalThis.localStorage.getItem(HIDDEN_KEY);
+          if (raw) {
+            const obj = JSON.parse(raw);
+            if (obj && typeof obj === "object") {
+              if (Array.isArray(obj.providers)) providers = obj.providers.filter((x) => typeof x === "string");
+              if (Array.isArray(obj.models)) models = obj.models.filter((x) => typeof x === "string");
+            }
+          }
+        } catch {}
+        hiddenCache = { providers, models };
+      }
+      return hiddenCache;
+    }
+    function persistHidden() {
+      try { globalThis.localStorage.setItem(HIDDEN_KEY, JSON.stringify(hiddenCache)); } catch {}
+    }
+    function isHiddenProvider(provider) {
+      return readHidden().providers.indexOf(String(provider)) !== -1;
+    }
+    function isHiddenModel(provider, model) {
+      return readHidden().models.indexOf(String(provider) + "::" + String(model)) !== -1;
+    }
+    function toggleHiddenProvider(provider) {
+      const h = readHidden();
+      const id = String(provider);
+      const i = h.providers.indexOf(id);
+      if (i === -1) h.providers.push(id); else h.providers.splice(i, 1);
+      persistHidden();
+    }
+    function toggleHiddenModel(provider, model) {
+      const h = readHidden();
+      const key = String(provider) + "::" + String(model);
+      const i = h.models.indexOf(key);
+      if (i === -1) h.models.push(key); else h.models.splice(i, 1);
+      persistHidden();
+    }
+    function clearHidden() {
+      hiddenCache = { providers: [], models: [] };
+      persistHidden();
+    }
+    function hiddenCount() {
+      const h = readHidden();
+      return h.providers.length + h.models.length;
     }
 
     // ---- Prices from https://models.dev/api.json (OpenCode's source) ----
@@ -522,6 +602,58 @@ window.__ModuleLoader__.load({
           const [favOnly, setFavOnly] = React.useState(false);
           // localOnly: only models tagged "Local: yes" (local endpoint)
           const [localOnly, setLocalOnly] = React.useState(false);
+          // liveOnly: local providers show ONLY models currently live on
+          // their API (configured but stale entries are hidden).
+          const [liveOnly, setLiveOnly] = React.useState(false);
+          // Live gateway inventory: { providers: { "<id>": { models?: string[], error?: string } } }
+          const [serverModels, setServerModels] = React.useState(null);
+          function fetchServerModels() {
+            globalThis.fetch("/model-garden/server-models")
+              .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+              .then(function (d) { setServerModels(d); })
+              .catch(function () { setServerModels(null); });
+          }
+          // Live inventory: fetch when the panel opens and then with every
+          // auto-refresh cycle — cheap local-only probes with 5 s timeout.
+          const fetchServerModelsRef = React.useRef(fetchServerModels);
+          fetchServerModelsRef.current = fetchServerModels;
+          React.useEffect(() => {
+            if (!open) return;
+            fetchServerModelsRef.current();
+            const id = globalThis.setInterval(() => {
+              if (globalThis.document && globalThis.document.hidden) return;
+              fetchServerModelsRef.current();
+            }, MODEL_LIST_REFRESH_MS);
+            return () => globalThis.clearInterval(id);
+          }, [open]);
+
+          // ---- Model-list refresh (picker's ⟳ button) ----
+          // POST /model-garden/refresh-models re-syncs EVERY configured
+          // provider route from its live API and writes the merged lists back
+          // to the settings document (llm-pi-ai hot-reloads them). Afterwards
+          // the directory + live inventory re-load so the panel reflects the
+          // new lists immediately.
+          const [refreshBusy, setRefreshBusy] = React.useState(false);
+          const [refreshResult, setRefreshResult] = React.useState(null); // { summary, results?, error? }
+          // Hidden-models/providers settings popup (⚙ in the search row).
+          const [hideOpen, setHideOpen] = React.useState(false);
+          function runRefreshModels() {
+            setRefreshBusy(true);
+            setRefreshResult(null);
+            globalThis.fetch("/model-garden/refresh-models", { method: "POST" })
+              .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+              .then(function (out) {
+                setRefreshResult(out.ok ? out.d : { error: out.d && out.d.error ? out.d.error : "refresh failed" });
+                // directory + live inventory see the freshly written lists
+                if (props.available && props.load) props.load();
+                fetchServerModels();
+              })
+              .catch(function (err) {
+                setRefreshResult({ error: String(err && err.message ? err.message : err) });
+              })
+              .finally(function () { setRefreshBusy(false); });
+          }
+
           // Table sorting: null = provider-grouped default view,
           // otherwise flat list sorted by the clicked column.
           const [sortKey, setSortKey] = React.useState(null); // 'name' | 'price' | null
@@ -559,7 +691,7 @@ window.__ModuleLoader__.load({
           // compact dropdown right next to it in the chat composer
           // (no "(max)" suffix).
           function findCurrentModel() {
-            if (current === null) return null;
+            if (!current) return null;
             for (const g of groups) {
               if (String(g.id) !== String(current.provider)) continue;
               for (const m of g.models) {
@@ -580,16 +712,39 @@ window.__ModuleLoader__.load({
           const currentLabel = current === null ? null : (String(current.model) || null);
           const q = query.trim().toLowerCase();
 
-          // Filter once (search + favorites), then group or sort.
+          // Live API inventory of local gateways: providerId -> Set(live model ids).
+          // Empty when no gateway data (remote/cloud providers or offline).
+          const liveMap = (function () {
+            const out = {};
+            if (serverModels === null || !serverModels.providers) return out;
+            for (const pid of Object.keys(serverModels.providers)) {
+              const info = serverModels.providers[pid];
+              if (info && Array.isArray(info.models) && info.models.length > 0) {
+                out[String(pid)] = new Set(info.models.map(String));
+              }
+            }
+            return out;
+          })();
+
+          // Filter once (search + favorites + live + hidden), then group or sort.
           const filtered = [];
           for (const g of groups) {
             if (!g || !g.models) continue;
             if (providerHidden(String(g.id))) continue;
+            // Whole providers can be blacklisted from the ⚙ hidden-settings
+            // popup — the group then vanishes entirely (models stay intact).
+            if (isHiddenProvider(String(g.id))) continue;
+            const live = liveMap[String(g.id)];
             for (const m of g.models) {
+              // User-blacklisted model (✕ in its row / hidden-settings).
+              if (isHiddenModel(g.id, m.id)) continue;
               const text = (m.name || m.id || "") + " " + (m.description || "");
               if (q !== "" && text.toLowerCase().indexOf(q) === -1) continue;
               if (favOnly && !hasFav(g.id, m.id)) continue;
               if (localOnly && !localFor(g.id, m.id)) continue;
+              // "Live" toggle: for providers with live inventory (local
+              // gateways) keep only models the API currently serves.
+              if (liveOnly && live !== undefined && !live.has(String(m.id))) continue;
               filtered.push({ g, m });
             }
           }
@@ -630,7 +785,8 @@ window.__ModuleLoader__.load({
             if (!open && !effortOpen) return;
             function onKey(e) {
               if (e.key !== "Escape") return;
-              if (effortOpen) setEffortOpen(false);
+              if (hideOpen) setHideOpen(false);
+              else if (effortOpen) setEffortOpen(false);
               else { setOpen(false); setTip(null); }
             }
             const d = globalThis.document;
@@ -760,8 +916,8 @@ window.__ModuleLoader__.load({
 
           function toggleOpen() {
             if (locked) return;
-            if (open) { setOpen(false); setTip(null); return; }
-            setOpen(true); setQuery(""); setTip(null); setEffortOpen(false);
+            if (open) { setOpen(false); setHideOpen(false); setTip(null); return; }
+            setOpen(true); setQuery(""); setHideOpen(false); setTip(null); setEffortOpen(false);
           }
           // Table-header click: asc → desc → off (back to provider groups).
           function toggleSort(key) {
@@ -848,7 +1004,14 @@ window.__ModuleLoader__.load({
                 "aria-label": fav ? "Remove favorite" : "Add to favorites",
                 title: fav ? "Remove favorite" : "Add to favorites",
                 onClick: (e) => { e.stopPropagation(); toggleFav(g.id, m.id); setUiTick((t) => t + 1); },
-              }, fav ? "★" : "☆")
+              }, fav ? "★" : "☆"),
+              React.createElement("span", {
+                className: "mg-hide",
+                role: "button",
+                "aria-label": "Hide " + (m.name || m.id) + " from the list",
+                title: "Hide this model from the list (manage hidden in ⚙)",
+                onClick: (e) => { e.stopPropagation(); toggleHiddenModel(g.id, m.id); setUiTick((t) => t + 1); },
+              }, "✕")
             );
           }
 
@@ -931,8 +1094,85 @@ window.__ModuleLoader__.load({
                   onClick: () => setLocalOnly(!localOnly),
                   "aria-pressed": localOnly,
                   title: localOnly ? "Show all models" : "Show only local models (Local: yes, no API price)",
-                }, "Local")
+                }, "Local"),
+                React.createElement("button", {
+                  type: "button",
+                  className: "mg-local" + (liveOnly ? " on" : ""),
+                  onClick: () => setLiveOnly(!liveOnly),
+                  "aria-pressed": liveOnly,
+                  title: liveOnly
+                    ? "Show configured + live models"
+                    : "Local providers: show only models their API currently serves",
+                }, "Live"),
+                React.createElement("button", {
+                  type: "button",
+                  className: "mg-local mg-refresh" + (refreshBusy ? " on" : ""),
+                  onClick: () => { if (!refreshBusy) runRefreshModels(); },
+                  disabled: refreshBusy,
+                  title: "Alle Modelllisten aus den Provider-APIs aktualisieren (schreibt in die llm-pi-ai-Konfiguration zurück)",
+                }, refreshBusy ? "⟳ …" : "⟳"),
+                React.createElement("button", {
+                  type: "button",
+                  className: "mg-local" + (hideOpen ? " on" : ""),
+                  onClick: () => setHideOpen(!hideOpen),
+                  "aria-pressed": hideOpen,
+                  title: "Ausgeblendete Modelle & Anbieter verwalten (Liste verkleinern)",
+                }, "⚙")
               ),
+              // Hidden-settings popup: every blacklisted provider and model
+              // with a per-row "show" link + a "show all" reset. Overlays the
+              // table (absolute inside the panel), so the table stays intact.
+              hideOpen && (function () {
+                const hidden = readHidden();
+                const provNames = {};
+                for (const g of groups) provNames[String(g.id)] = g.name || String(g.id);
+                // Provider rows: id -> display name.
+                const provRows = hidden.providers.map(function (pid) {
+                  return React.createElement("div", { key: "hp:" + pid, className: "mg-hideitem" },
+                    React.createElement("span", { className: "mg-hideitem-prov" }, "provider"),
+                    React.createElement("span", { className: "mg-hideitem-name" }, provNames[pid] || pid),
+                    React.createElement("button", {
+                      type: "button",
+                      className: "mg-hideitem-show",
+                      onClick: () => { toggleHiddenProvider(pid); setUiTick((t) => t + 1); },
+                      title: "Show this provider again",
+                    }, "show")
+                  );
+                });
+                // Model rows: "provider::model" -> split back for display.
+                const modelRows = hidden.models.map(function (key) {
+                  const sep = key.indexOf("::");
+                  const pid = sep === -1 ? "" : key.slice(0, sep);
+                  const mid = sep === -1 ? key : key.slice(sep + 2);
+                  return React.createElement("div", { key: "hm:" + key, className: "mg-hideitem" },
+                    React.createElement("span", { className: "mg-hideitem-prov" }, provNames[pid] || pid),
+                    React.createElement("span", { className: "mg-hideitem-name" }, mid),
+                    React.createElement("button", {
+                      type: "button",
+                      className: "mg-hideitem-show",
+                      onClick: () => { toggleHiddenModel(pid, mid); setUiTick((t) => t + 1); },
+                      title: "Show this model again",
+                    }, "show")
+                  );
+                });
+                return React.createElement("div", { className: "mg-hidepanel", role: "dialog", "aria-label": "Hidden models and providers" },
+                  React.createElement("div", { className: "mg-hidepanel-title" },
+                    React.createElement("span", null, "Hidden from list"),
+                    React.createElement("button", {
+                      type: "button",
+                      className: "mg-hidepanel-clear",
+                      onClick: () => { clearHidden(); setUiTick((t) => t + 1); },
+                      title: "Un-hide every model and provider",
+                    }, "show all")
+                  ),
+                  React.createElement("div", { className: "mg-hidepanel-scroll" },
+                    React.createElement("div", { className: "mg-hidepanel-sect" }, "Providers"),
+                    provRows.length > 0 ? provRows : React.createElement("div", { className: "mg-hidepanel-empty" }, "none hidden"),
+                    React.createElement("div", { className: "mg-hidepanel-sect" }, "Models"),
+                    modelRows.length > 0 ? modelRows : React.createElement("div", { className: "mg-hidepanel-empty" }, "none hidden")
+                  )
+                );
+              })(),
               React.createElement("div", { className: "mg-thead" },
                 React.createElement("span", null, ""),
                 React.createElement("button", {
@@ -970,7 +1210,7 @@ window.__ModuleLoader__.load({
                     ? React.createElement("div", { className: "mg-status" }, "cost endpoint unavailable")
                     : null;
                 }
-                const label = current === null
+                const label = !current
                   ? "no model selected"
                   : (current.model || current.provider || "model");
                 // Token usage is ALWAYS shown once the session has traffic;
@@ -1009,7 +1249,7 @@ window.__ModuleLoader__.load({
                 groups.length === 0 ? "No models available"
                   : favOnly ? "No favorites yet — star a model"
                   : localOnly ? "No local models (all models have an API price)"
-                  : "No matching models"),
+                  : (q === "" && hiddenCount() > 0 ? "All visible models hidden — open ⚙ to restore" : "No matching models")),
               React.createElement("div", { className: "mg-groups" },
                 sortKey !== null
                   // flat table view while a column sort is active
@@ -1026,7 +1266,14 @@ window.__ModuleLoader__.load({
                       },
                         React.createElement("span", { className: "mg-caret" }, "▼"),
                         React.createElement("span", null, grp.g.name || grp.g.id),
-                        React.createElement("span", { className: "mg-badge" }, String(grp.models.length))
+                        React.createElement("span", { className: "mg-badge" }, String(grp.models.length)),
+                        React.createElement("span", {
+                          className: "mg-hide",
+                          role: "button",
+                          "aria-label": "Hide provider " + (grp.g.name || grp.g.id) + " entirely",
+                          title: "Hide this whole provider (manage hidden in ⚙)",
+                          onClick: (e) => { e.stopPropagation(); toggleHiddenProvider(grp.g.id); setUiTick((t) => t + 1); },
+                        }, "✕")
                       ),
                       !closed && React.createElement("div", { className: "mg-groupbody" },
                         grp.models.map((m) => renderRow(grp.g, m, false))
@@ -1036,7 +1283,20 @@ window.__ModuleLoader__.load({
               ),
               React.createElement("div", { className: "mg-status", style: { display: "flex", justifyContent: "space-between" } },
                 React.createElement("span", { className: "mg-count" }, filtered.length + " models"),
-                React.createElement("span", null, "prices: models.dev")
+                React.createElement("span", {
+                  className: "mg-count",
+                  style: refreshResult && refreshResult.error ? { color: "var(--dsw-alias-label-warning, #d29922)" } : undefined,
+                  title: refreshResult && Array.isArray(refreshResult.results)
+                    ? refreshResult.results.map(function (r) {
+                        return r.id + ": " + r.total + " Modelle" +
+                          (r.added > 0 ? " +" + r.added : "") +
+                          (r.removed > 0 ? " −" + r.removed : "") +
+                          (r.error ? " — " + r.error : "");
+                      }).join("\n")
+                    : undefined,
+                }, refreshResult
+                  ? (refreshResult.error ? "⟳ " + refreshResult.error : "⟳ " + refreshResult.summary)
+                  : "prices: models.dev")
               )
             ),
             (function () {

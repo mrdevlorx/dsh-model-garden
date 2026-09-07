@@ -15,8 +15,22 @@
  *   -> { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
  *        reasoningTokens, steps }
  *
+ *   POST /model-garden/refresh-models
+ *   -> queries every configured llm-pi-ai provider route (OpenAI-compatible
+ *      GET {baseURL}/models; catalog routes fall back to their pi-ai catalog
+ *      base URL, resolved live from the running installation), merges the
+ *      live ids into the settings `models` lists (existing entries keep all
+ *      their hand-tuned fields, new ids come in as minimal entries, ids the
+ *      API no longer serves drop out) and writes the changed lists back
+ *      through the settings service — comment-preserving, validated against
+ *      the llm-pi-ai schema, hot-reloaded by llm-pi-ai. Returns the
+ *      per-provider diff for the picker's refresh button.
+ *
  * @module model-garden
  */
+import { refreshAll, summarize } from './lib/refresh-core.js'
+import { loadPiAiCatalog } from './lib/pi-catalog.js'
+
 export const name = 'dsh-model-garden'
 // Deliberately NO hard inject: profiles without a web stack (minimal or TUI
 // profiles) never provide `webServer`, and a hard inject would park this
@@ -73,6 +87,152 @@ function providerBaseUrls(settings) {
     }
   }
   return map
+}
+
+/**
+ * Self-hosted gateway routes (llm-pi-ai providers with an explicit baseURL,
+ * e.g. a local OpenAI-compatible ki-server). Their model catalogs are the
+ * settings document — DSH never re-scans them at runtime — so this helper
+ * collects what we need to query the gateway's live /v1/models ourselves.
+ * Only LOCAL gateways are considered — cloud routes must not be hit with an
+ * extra /models request. The apiKeyEnv is carried unresolved; the probe
+ * resolves it through the SAME credential chain as the refresh pass
+ * (credentials service first, process env as fallback).
+ */
+function providerGateways(settings) {
+  const out = {}
+  if (settings === undefined) return out
+  let section
+  try {
+    section = settings.get('llm-pi-ai')
+  } catch {
+    return out
+  }
+  const providers = section && typeof section === 'object' ? section.providers : undefined
+  if (providers && typeof providers === 'object') {
+    for (const id in providers) {
+      const p = providers[id]
+      if (!p || typeof p !== 'object' || typeof p.baseURL !== 'string') continue
+      if (!isLocalBaseUrl(p.baseURL)) continue
+      out[id] = { baseURL: p.baseURL, apiKeyEnv: typeof p.apiKeyEnv === 'string' ? p.apiKeyEnv : undefined }
+    }
+  }
+  return out
+}
+
+const SERVER_MODELS_TIMEOUT = 5000
+
+/** GET {baseURL}/models (OpenAI-compatible) with a hard timeout. */
+async function queryGatewayModels(baseURL, apiKey) {
+  const url = baseURL.replace(/\/+$/, '') + '/models'
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), SERVER_MODELS_TIMEOUT)
+  try {
+    const res = await fetch(url, {
+      headers: apiKey ? { authorization: 'Bearer ' + apiKey } : undefined,
+      signal: ctrl.signal,
+    })
+    if (!res.ok) return { error: 'http ' + res.status }
+    const data = await res.json()
+    const arr = data && Array.isArray(data.data) ? data.data : []
+    const models = arr
+      .map((m) => (typeof m === 'string' ? m : m && typeof m.id === 'string' ? m.id : null))
+      .filter((x) => x !== null)
+    return { models }
+  } catch (err) {
+    return { error: String(err && err.message ? err.message : err) }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// ─── Model-list refresh (POST /model-garden/refresh-models) ─────────────────
+//
+// One explicit user action (the picker's refresh button) re-syncs EVERY
+// configured provider route from its live API and writes the merged lists
+// back into the settings document. Unlike the passive local-only
+// /server-models probe, cloud routes are queried too — the click, not the
+// panel mount, authorizes the request.
+
+const REFRESH_TIMEOUT = 15000
+
+/**
+ * Resolve the installed pi-ai catalog providers LIVE from the running
+ * profile. `ctx.baseUrl` anchors the profile directory; the shared loader
+ * walks up to `$DSH_HOME/profiles/node_modules` (dsh's flat fallback that
+ * carries every in-box closure package — pi-ai included) and imports the
+ * real dist file, bypassing the package's exports map (which only declares
+ * the `import`/`types` conditions, so createRequire-based resolution would
+ * throw ERR_PACKAGE_PATH_NOT_EXPORTED). No static dependency — the published
+ * plugin stays dependency-free.
+ * @returns {{ baseUrls: Map, openRouterIds: Set } | null} catalog facts, or
+ *   null when this installation does not expose pi-ai (refresh then only
+ *   covers routes with an explicit baseURL).
+ */
+async function piAiCatalog(ctx) {
+  return loadPiAiCatalog(ctx.baseUrl)
+}
+
+/** One full refresh pass; returns the result rows for the client. */
+async function runModelRefresh(ctx) {
+  const settings = ctx.get('settings')
+  if (settings === undefined) return { error: 'settings service unavailable' }
+  const section = settings.get('llm-pi-ai')
+  const providers = section && typeof section === 'object' && section.providers && typeof section.providers === 'object'
+    ? section.providers
+    : {}
+  if (Object.keys(providers).length === 0) return { error: 'no llm-pi-ai provider routes configured' }
+  const catalog = await piAiCatalog(ctx)
+  const credentials = ctx.get('credentials')
+  const results = await refreshAll({
+    providers,
+    existingModels: (id) => {
+      const current = settings.get('llm-pi-ai')
+      const route = current && typeof current === 'object' ? current.providers : undefined
+      const models = route && route[id] && typeof route[id] === 'object' ? route[id].models : undefined
+      return Array.isArray(models) ? models : undefined
+    },
+    catalogBaseUrls: catalog === null ? new Map() : catalog.baseUrls,
+    catalogModelIds: catalog === null ? new Set() : catalog.openRouterIds,
+    resolveKey: async (ref) => {
+      // Credential service first (covers ~/.dsh/.credentials.yaml), process
+      // environment as fallback — matching how llm-pi-ai resolves keys.
+      try {
+        const hit = await (credentials === undefined ? undefined : credentials.resolve(ref))
+        if (hit && typeof hit.value === 'string' && hit.value !== '') return hit.value
+      } catch { /* fall through to the environment */ }
+      return process.env[ref]
+    },
+    timeoutMs: REFRESH_TIMEOUT,
+  })
+  const writeErrors = {}
+  for (const result of results) {
+    if (!result.ok || !result.changed) continue
+    try {
+      await settings.update('llm-pi-ai', {
+        providers: { [result.id]: { models: result.models } },
+      })
+    } catch (err) {
+      writeErrors[result.id] = String(err && err.message ? err.message : err).slice(0, 200)
+    }
+  }
+  const rows = results.map((result) => ({
+    id: result.id,
+    ok: result.ok && writeErrors[result.id] === undefined,
+    changed: result.changed,
+    total: result.total,
+    added: result.added.length,
+    removed: result.removed.length,
+    error: writeErrors[result.id] !== undefined ? 'write rejected: ' + writeErrors[result.id] : result.error,
+  }))
+  const written = rows.filter((row) => row.ok && row.changed).length
+  return {
+    results: rows,
+    summary: summarize(results) + (written > 0 ? ' · ' + written + ' Listen geschrieben' : ''),
+    // The merged lists re-resolved through llm-pi-ai; drop the /catalog cache
+    // so context windows and locality of NEW models are served immediately.
+    invalidateCatalog: written > 0,
+  }
 }
 
 /** Aggregate real provider usage for one session from its durable events. */
@@ -254,6 +414,12 @@ async function getCatalog(llm, settings) {
   return catalogInflight
 }
 
+/** Drop the /catalog cache so the next read sees freshly written lists. */
+function invalidateCatalogCache() {
+  catalogCache = null
+  catalogAt = 0
+}
+
 /**
  * Host apply: register the live-cost and catalog routes. Kept minimal and
  * side-effect free otherwise; disposable via ctx.effect.
@@ -268,6 +434,9 @@ async function getCatalog(llm, settings) {
  */
 export function apply(ctx) {
   let mounted = false
+  // One refresh at a time: the picker button disables itself, this is the
+  // server-side backstop (409 for a second concurrent click).
+  let refreshInflight = null
   const mount = () => {
     if (mounted) return
     const webServer = ctx.get('webServer')
@@ -322,6 +491,62 @@ export function apply(ctx) {
         }
       },
     }), 'model-garden: /model-garden/cost-history route')
+    ctx.effect(() => webServer.register({
+      kind: 'exact',
+      path: '/model-garden/server-models',
+      handler: async (req, res) => {
+        // Live model inventory of LOCAL gateway routes (llm-pi-ai with an
+        // explicit local baseURL). DSH serves their settings-defined catalog
+        // and never re-scans, so the picker queries the gateway directly to
+        // keep the list current (and to filter "live only" local models).
+        try {
+          // Same credential chain as the refresh pass: credentials service
+          // first (covers ~/.dsh/.credentials.yaml), process env fallback.
+          const credentials = ctx.get('credentials')
+          const resolveKey = async (ref) => {
+            if (typeof ref !== 'string' || ref === '') return undefined
+            try {
+              const hit = await (credentials === undefined ? undefined : credentials.resolve(ref))
+              if (hit && typeof hit.value === 'string' && hit.value !== '') return hit.value
+            } catch { /* fall through to the environment */ }
+            return process.env[ref]
+          }
+          const gw = providerGateways(ctx.get('settings'))
+          const providers = {}
+          await Promise.all(Object.keys(gw).map(async (id) => {
+            providers[id] = await queryGatewayModels(gw[id].baseURL, await resolveKey(gw[id].apiKeyEnv))
+          }))
+          writeJson(res, 200, { providers })
+        } catch (err) {
+          writeJson(res, 500, { error: String(err && err.message ? err.message : err) })
+        }
+      },
+    }), 'model-garden: /model-garden/server-models route')
+    ctx.effect(() => webServer.register({
+      kind: 'exact',
+      path: '/model-garden/refresh-models',
+      handler: async (req, res) => {
+        // Explicit user action (the picker's refresh button): re-sync every
+        // configured provider route from its live API and write the merged
+        // model lists back through the settings service.
+        if (req.method !== 'POST') {
+          res.writeHead(405, { allow: 'POST' })
+          return res.end()
+        }
+        if (refreshInflight !== null) return writeJson(res, 409, { error: 'refresh already running' })
+        let settle
+        refreshInflight = new Promise((resolve) => { settle = resolve })
+        try {
+          const outcome = await runModelRefresh(ctx)
+          if (outcome !== null && outcome.invalidateCatalog) invalidateCatalogCache()
+          writeJson(res, outcome !== null && outcome.error !== undefined ? 500 : 200, outcome)
+          settle(true)
+        } catch (err) {
+          writeJson(res, 500, { error: String(err && err.message ? err.message : err) })
+          settle(false)
+        }
+      },
+    }), 'model-garden: /model-garden/refresh-models route')
   }
   mount()
   // `internal/service` fires whenever any service is provided; the listener
