@@ -185,3 +185,40 @@ test("summarize formuliert den Lauf", () => {
 	assert.match(line, /\+1 neu/);
 	assert.match(line, /1 Provider fehlerhaft/);
 });
+
+test('discoverProvider: a fetch that never resolves is bounded by the deadline (no 409 wedge)', async () => {
+  const { discoverProvider } = await import('../lib/refresh-core.js')
+  // A fetchImpl that NEVER settles — can't be aborted (no signal support).
+  const hangingFetch = () => new Promise(() => {})
+  const t0 = Date.now()
+  const result = await discoverProvider({
+    providerId: 'sink',
+    profile: { baseURL: 'http://sink.test/v1' },
+    catalogBaseUrls: new Map(),
+    fetchImpl: hangingFetch,
+    timeoutMs: 200,
+  })
+  const elapsed = Date.now() - t0
+  assert.ok(!result.ok, 'hanging fetch must not yield ok')
+  assert.ok(result.error.length > 0, 'diagnostic present: ' + result.error)
+  assert.ok(elapsed < 2000, `bounded under time budget (took ${elapsed}ms)`)
+})
+
+test('discoverProvider: a hanging resolveKey is bounded too', async () => {
+  const { discoverProvider } = await import('../lib/refresh-core.js')
+  const okFetch = async () => ({ ok: true, json: async () => ({ data: ['a', 'b'] }) })
+  const hangingKey = () => new Promise(() => {})
+  const t0 = Date.now()
+  const result = await discoverProvider({
+    providerId: 'sink2',
+    profile: { baseURL: 'http://sink.test/v1', apiKeyEnv: 'SINK_KEY' },
+    catalogBaseUrls: new Map(),
+    resolveKey: hangingKey,
+    fetchImpl: okFetch,
+    timeoutMs: 300,
+  })
+  const elapsed = Date.now() - t0
+  // A hanging resolver must DEGRADE (timeout -> no key -> still fetch), never hang.
+  assert.ok(elapsed < 2000, `bounded under time budget (took ${elapsed}ms)`)
+  assert.ok(result !== undefined, 'returned a diagnostic')
+})

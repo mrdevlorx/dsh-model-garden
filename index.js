@@ -155,6 +155,10 @@ async function queryGatewayModels(baseURL, apiKey) {
 // panel mount, authorizes the request.
 
 const REFRESH_TIMEOUT = 15000
+// Absolute ceiling on one refresh call (per-provider discovery is already
+// bounded by REFRESH_TIMEOUT; this guarantees a genuinely stuck pass cannot
+// leave refreshInflight set and the picker button dead forever).
+const REFRESH_HARD_CAP_MS = 60000
 
 /**
  * Resolve the installed pi-ai catalog providers LIVE from the running
@@ -534,17 +538,38 @@ export function apply(ctx) {
           return res.end()
         }
         if (refreshInflight !== null) return writeJson(res, 409, { error: 'refresh already running' })
-        let settle
-        refreshInflight = new Promise((resolve) => { settle = resolve })
+        refreshInflight = true
+        // Hard lifetime cap: every provider's discovery is individually
+        // bounded (timeoutMs plus a bulletproof race deadline in
+        // discoverProvider), but this outer fence GUARANTEES refreshInflight
+        // clears even if something still wedges below — the picker's refresh
+        // button must never stay stuck at 409 (a permanently dead button).
+        // On expiry we answer 504 with a readable verdict instead of leaving
+        // the gate shut (a reload only ever helps, it must never be required).
+        // The cap timer is always cancelled once the pass settles so it never
+        // dangles and keeps the process alive.
+        let capTimer
+        let outcome
         try {
-          const outcome = await runModelRefresh(ctx)
-          if (outcome !== null && outcome.invalidateCatalog) invalidateCatalogCache()
-          writeJson(res, outcome !== null && outcome.error !== undefined ? 500 : 200, outcome)
-          settle(true)
-        } catch (err) {
-          writeJson(res, 500, { error: String(err && err.message ? err.message : err) })
-          settle(false)
+          outcome = await Promise.race([
+            Promise.resolve(runModelRefresh(ctx)),
+            new Promise((resolve) => {
+              capTimer = setTimeout(() => {
+                resolve(Object.assign(
+                  { error: `refresh timed out after ${Math.round(REFRESH_HARD_CAP_MS / 1000)}s` },
+                  { timedOut: true })
+                )
+              }, REFRESH_HARD_CAP_MS)
+            }),
+          ])
+        } finally {
+          clearTimeout(capTimer)
         }
+        refreshInflight = null
+        if (outcome !== null && outcome.invalidateCatalog) invalidateCatalogCache()
+        if (outcome !== null && outcome.error !== undefined)
+          return writeJson(res, outcome.timedOut === true ? 504 : 500, outcome)
+        return writeJson(res, 200, outcome)
       },
     }), 'model-garden: /model-garden/refresh-models route')
   }
