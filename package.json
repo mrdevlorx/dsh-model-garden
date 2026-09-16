@@ -14,6 +14,15 @@
     "token-cost"
   ],
   "license": "MIT",
+  "author": "mrdevlorx",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mrdevlorx/dsh-model-garden.git"
+  },
+  "homepage": "https://github.com/mrdevlorx/dsh-model-garden#readme",
+  "bugs": {
+    "url": "https://github.com/mrdevlorx/dsh-model-garden/issues"
+  },
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -29,6 +38,7 @@
     "bin/refresh-models.mjs",
     "test/refresh-core.test.js",
     "test/refresh-endpoint.test.js",
+    "test/cost-endpoint.test.js",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"

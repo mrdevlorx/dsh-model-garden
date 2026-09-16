@@ -68,6 +68,13 @@ GET /model-garden/cost-history?session=<sessionId>&limit=<n>
 
 GET /model-garden/catalog
   → { "provider::model": { local, context?, maxOutput? } }   (cached 10 min)
+
+GET /model-garden/server-models
+  → { providers: { "<id>": { models: [ "<id>", … ] } | { error } } }   (live probe of local gateways)
+
+POST /model-garden/refresh-models
+  → { summary, invalidateCatalog, results: [ … ] }   (see "Refresh button" above;
+     405 on another method, 409 while a pass is already running, 504 on timeout)
 ```
 
 The cost endpoint aggregates the real `usage` payloads of `assistant/message` events from the durable session log — no estimation. The cost-history endpoint additionally attributes each usage step to the model in effect: `assistant/message` events carry usage but not the model, so it tracks `request/context` (and `request/header`) events, which precede the request they describe with `{ provider, model }` — a single pass over the same in-memory events, no extra persistence. The catalog endpoint resolves `contextWindow` / `defaultMaxTokens` per model through the host `llm` service (`resolveModelInfo`), so local/self-hosted providers report their real limits.
@@ -110,7 +117,11 @@ Favorites, collapsed providers, the hidden-models/provider blacklist (`dsh.model
 
 ## Compatibility
 
-Developed and tested against DeepSeek Harness `0.1.0-rc.8` (`@deepseek-ai/dsh-host-webserver`, `dsh-session`, `dsh-llm`, `dsh-client-ui-model-selection`); first released against `0.1.0-rc.6`. The client half is plain React via `window.__ModuleLoader__` — no build step, no dependencies.
+Developed and tested against DeepSeek Harness `0.1.0-rc.6` … `0.1.5-rc.1` (`@deepseek-ai/dsh-host-webserver`, `dsh-session`, `dsh-llm`, `dsh-client-ui-model-selection`). The client half is plain React via `window.__ModuleLoader__` — no build step, no dependencies.
+
+The cost endpoints read the durable session log through the session facade (`snapshotEvents()`, falling back to `ownEvents()` and to the older public `events` array), so token usage and the cost breakdown work across session-facade generations.
+
+> Slot note: the client half declares `remote` + `remote.session` in its `inject` list. `modelDirectories.directoryFor()` reaches into `ctx.remote.session`, and a cordis service proxy binds `ctx` to the *calling* fiber — without those declarations the slot's inject factory throws, the entry abdicates and the native picker (priority `0`) silently takes the seat back.
 
 ## Credits
 
