@@ -544,38 +544,47 @@ window.__ModuleLoader__.load({
 
     // ---- Plugin body ----
     function apply(ctx) {
-      const slots = ctx.get("slots");
-      if (slots === undefined) return;
-      slots.inject("conversation.input.model", () => slots.register(
-        {
-          name: "conversation.input.model",
-          priority: -1,
-          inject: (sessionId) => {
-            const sessions = ctx.get("sessions");
-            const available = sessions === undefined || sessions.subagentAddress === undefined
-              ? true
-              : sessions.subagentAddress(sessionId) === undefined;
-            const models = ctx.get("modelDirectories");
-            if (models === undefined) {
-              return { sessionId, available: false, directory: null, load: () => {}, select: () => Promise.resolve(false) };
-            }
-            const directory = models.directoryFor(sessionId);
-            return {
-              sessionId,
-              available,
-              directory: directory.store,
-              load: () => { if (available) directory.load().catch(() => {}); },
-              select: (selection) => available ? directory.select(selection).then(() => true, () => false) : Promise.resolve(false),
-            };
+      ctx.inject(["slots", "modelDirectories"], (scope) => {
+        const slots = scope.slots;
+        const models = scope.modelDirectories;
+        const sessions = scope.sessions;
+        slots.inject("conversation.input.model", () => {
+          return slots.register(
+          {
+            name: "conversation.input.model",
+            priority: -1,
+            inject: (sessionId) => {
+              const available = sessions === undefined || sessions.subagentAddress === undefined
+                ? true
+                : sessions.subagentAddress(sessionId) === undefined;
+              if (models === undefined) {
+                return { sessionId, available: false, directory: null, load: () => {}, select: () => Promise.resolve(false) };
+              }
+              const directory = models.directoryFor(sessionId);
+              return {
+                sessionId,
+                available,
+                directory: directory ? directory.store : null,
+                load: () => { if (available && directory) directory.load().catch(() => {}); },
+                select: (selection) => available && directory ? directory.select(selection).then(() => true, () => false) : Promise.resolve(false),
+              };
+            },
           },
-        },
-        function ModelGardenSelect(props) {
-          const store = props.directory;
-          const [state, setState] = React.useState(store === null ? null : store.getSnapshot());
-          React.useEffect(() => {
-            if (store === null || store.subscribe === undefined) return;
-            return store.subscribe(() => setState(store.getSnapshot()));
-          }, [store]);
+          function ModelGardenSelect(props) {
+            const store = props.directory;
+            const emptySnapshot = React.useMemo(() => ({
+              current: null,
+              routable: null,
+              groups: [],
+              failures: [],
+              status: "idle",
+              error: null,
+            }), []);
+            const state = React.useSyncExternalStore(
+              React.useCallback((cb) => (store && typeof store.subscribe === "function" ? store.subscribe(cb) : () => {}), [store]),
+              React.useCallback(() => (store && typeof store.getSnapshot === "function" ? store.getSnapshot() : emptySnapshot), [store, emptySnapshot]),
+              () => emptySnapshot
+            );
 
           // Load models immediately on mount / when available
           React.useEffect(() => {
@@ -717,9 +726,10 @@ window.__ModuleLoader__.load({
           function findCurrentModel() {
             if (!current) return null;
             for (const g of groups) {
-              if (String(g.id) !== String(current.provider)) continue;
-              for (const m of g.models) {
-                if (String(m.id) === String(current.model)) return m;
+              if (!g || String(g.id) !== String(current.provider)) continue;
+              const gModels = Array.isArray(g.models) ? g.models : [];
+              for (const m of gModels) {
+                if (m && String(m.id) === String(current.model)) return m;
               }
             }
             return null;
@@ -956,7 +966,9 @@ window.__ModuleLoader__.load({
             // strongest); defaultEffort is only a fallback.
             const hi = highestEffort(m);
             if (hi !== "") sel.reasoningEffort = hi;
-            props.select(sel);
+            if (typeof props.select === "function") {
+              props.select(sel);
+            }
             setOpen(false);
             setTip(null);
           }
@@ -964,7 +976,7 @@ window.__ModuleLoader__.load({
           // in the chat composer: re-select the current model with that
           // effort. Opening one picker always closes the other.
           function pickChatEffort(value) {
-            if (current === null) return;
+            if (current === null || typeof props.select !== "function") return;
             props
               .select({ provider: current.provider, model: current.model, reasoningEffort: value })
               .then(function () { setUiTick((t) => t + 1); }, function () {});
@@ -1050,7 +1062,7 @@ window.__ModuleLoader__.load({
                 "aria-haspopup": "listbox",
                 "aria-expanded": open,
               },
-                React.createElement("span", { className: "mg-label" }, currentLabel === null ? "Select model" : currentLabel),
+                React.createElement("span", { className: "mg-label" }, (currentLabel === null ? "Select model" : currentLabel)),
                 React.createElement("span", { className: "mg-chev" }, "▾")
               ),
               // Reasoning-effort picker right next to the model name — same
@@ -1683,10 +1695,19 @@ window.__ModuleLoader__.load({
             })()
           );
         }
-      ));
+      );
+      });
+      });
     }
 
-    exports.inject = ["slots", "sessions", "modelDirectories"];
+    // `remote` + `remote.session`: modelDirectories.directoryFor() touches
+    // `this.ctx.remote.session` internally, and a cordis service proxy binds
+    // `this.ctx` to the CALLING fiber. A consumer that does not declare
+    // `remote.session` gets
+    //   Error: cannot get property "remote.session" without inject
+    // thrown from inside the slot's inject factory — the entry abdicates and
+    // the native picker (priority 0) takes the seat back.
+    exports.inject = ["slots", "sessions", "remote", "remote.session"];
     exports.apply = apply;
     return module.exports;
   }
