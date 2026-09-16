@@ -239,6 +239,41 @@ async function runModelRefresh(ctx) {
   }
 }
 
+/**
+ * Read a session's durable event log across DSH session-facade generations.
+ *
+ * The current facade keeps its log private and exposes `snapshotEvents()` — the
+ * complete canonical history (seq 0 … end, snapshot-cached until the next
+ * append) — plus `ownEvents()` for the part after a fork-inherited prefix.
+ * Earlier builds exposed a public `events` array instead. Reading
+ * `session.events` on the current facade yields `undefined`, which silently
+ * aggregated an empty log: zero steps, so the picker hid its cost line and the
+ * whole cost breakdown with it.
+ *
+ * @param session - live session from the `sessions` service, or undefined.
+ * @returns the session's events in log order, or an empty array.
+ */
+function sessionEvents(session) {
+  if (session === null || typeof session !== 'object') return []
+  // Every property read sits inside the try: a guarded service proxy throws on
+  // names it does not serve, and that must not take the whole route down.
+  for (const name of ['snapshotEvents', 'ownEvents']) {
+    try {
+      const read = session[name]
+      if (typeof read !== 'function') continue
+      const events = read.call(session)
+      if (Array.isArray(events)) return events
+    } catch {
+      // Detached or unreadable log: fall through to the next accessor.
+    }
+  }
+  try {
+    return Array.isArray(session.events) ? session.events : []
+  } catch {
+    return []
+  }
+}
+
 /** Aggregate real provider usage for one session from its durable events. */
 function aggregateUsage(events) {
   let inputTokens = 0
@@ -457,7 +492,7 @@ export function apply(ctx) {
         const session = sessions === undefined ? undefined : sessions.get(sessionId)
         if (!session) return writeJson(res, 404, { error: 'session not found' })
         try {
-          const events = session.events !== undefined ? session.events : []
+          const events = sessionEvents(session)
           const usage = aggregateUsage(events)
           writeJson(res, 200, usage)
         } catch (err) {
@@ -488,7 +523,7 @@ export function apply(ctx) {
         const session = sessions === undefined ? undefined : sessions.get(sessionId)
         if (!session) return writeJson(res, 404, { error: 'session not found' })
         try {
-          const events = session.events !== undefined ? session.events : []
+          const events = sessionEvents(session)
           writeJson(res, 200, buildHistory(events, Number.isFinite(limit) ? limit : 40))
         } catch (err) {
           writeJson(res, 500, { error: String(err && err.message ? err.message : err) })
