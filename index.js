@@ -375,11 +375,38 @@ function buildHistory(events, limit) {
   return { steps: steps.slice(-max).reverse(), models: Object.values(models), totalSteps: steps.length }
 }
 
+/**
+ * Whether a request came from another site. The routes are same-origin only:
+ * browsers send `Sec-Fetch-Site` on every fetch and `Origin` on POST, and a
+ * cross-site page could otherwise fire the state-changing refresh with the
+ * user's stored provider credentials through a simple POST (no preflight).
+ * Requests carrying neither header (curl, the test suite) are allowed.
+ *
+ * @param req - the incoming request.
+ * @returns true when the request must be rejected.
+ */
+function isCrossSite(req) {
+  const headers = (req && req.headers) || {}
+  const site = headers['sec-fetch-site']
+  if (typeof site === 'string' && site !== 'same-origin' && site !== 'none') return true
+  const origin = headers.origin
+  if (typeof origin !== 'string' || origin === '') return false
+  const host = headers.host
+  if (typeof host !== 'string' || host === '') return true
+  try {
+    return new URL(origin).host !== host
+  } catch {
+    return true
+  }
+}
+
 function writeJson(res, status, body) {
+  // Deliberately no `access-control-allow-origin`: every route is consumed
+  // same-origin by the picker, and a wildcard would let any website read
+  // session usage and trigger the refresh POST from this browser.
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store',
-    'access-control-allow-origin': '*',
   })
   res.end(JSON.stringify(body))
 }
@@ -572,35 +599,41 @@ export function apply(ctx) {
           res.writeHead(405, { allow: 'POST' })
           return res.end()
         }
+        if (isCrossSite(req)) return writeJson(res, 403, { error: 'cross-site request rejected' })
         if (refreshInflight !== null) return writeJson(res, 409, { error: 'refresh already running' })
-        refreshInflight = true
-        // Hard lifetime cap: every provider's discovery is individually
-        // bounded (timeoutMs plus a bulletproof race deadline in
-        // discoverProvider), but this outer fence GUARANTEES refreshInflight
-        // clears even if something still wedges below — the picker's refresh
-        // button must never stay stuck at 409 (a permanently dead button).
-        // On expiry we answer 504 with a readable verdict instead of leaving
-        // the gate shut (a reload only ever helps, it must never be required).
-        // The cap timer is always cancelled once the pass settles so it never
-        // dangles and keeps the process alive.
+        // The gate IS the running pass: it settles exactly once and clears the
+        // gate in the same turn, so a rejected or wedged pass can never leave
+        // the route permanently at 409 (a dead refresh button). The pass
+        // resolves — never rejects — with a readable { error } verdict, which
+        // keeps the race below total.
+        const pass = Promise.resolve()
+          .then(() => runModelRefresh(ctx))
+          .then((out) => out, (err) => ({ error: String(err && err.message ? err.message : err) }))
+        refreshInflight = pass
+        pass.then(() => { if (refreshInflight === pass) refreshInflight = null })
+        // Hard lifetime cap: every provider's discovery is individually bounded
+        // (timeoutMs plus a deadline in discoverProvider), but this outer fence
+        // must still answer a wedged pass with a readable 504 instead of a
+        // button that spins forever. The pass itself runs on to completion (it
+        // may still be writing settings); until it settles the gate above stays
+        // closed, so exactly one pass runs at a time.
         let capTimer
         let outcome
         try {
           outcome = await Promise.race([
-            Promise.resolve(runModelRefresh(ctx)),
+            pass,
             new Promise((resolve) => {
               capTimer = setTimeout(() => {
-                resolve(Object.assign(
-                  { error: `refresh timed out after ${Math.round(REFRESH_HARD_CAP_MS / 1000)}s` },
-                  { timedOut: true })
-                )
+                resolve({
+                  error: `refresh timed out after ${Math.round(REFRESH_HARD_CAP_MS / 1000)}s`,
+                  timedOut: true,
+                })
               }, REFRESH_HARD_CAP_MS)
             }),
           ])
         } finally {
           clearTimeout(capTimer)
         }
-        refreshInflight = null
         if (outcome !== null && outcome.invalidateCatalog) invalidateCatalogCache()
         if (outcome !== null && outcome.error !== undefined)
           return writeJson(res, outcome.timedOut === true ? 504 : 500, outcome)

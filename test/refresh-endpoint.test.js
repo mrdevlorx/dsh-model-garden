@@ -56,7 +56,7 @@ function makeCtx({ providers, fetchImpl }) {
     effect: (fn) => fn(),
     on: () => {},
   };
-  return { ctx, routes, updates };
+  return { ctx, routes, updates, settings };
 }
 
 function responseSpy() {
@@ -206,5 +206,102 @@ test("server-models drops env-fallback when the credentials service answers", as
   } finally {
     globalThis.fetch = originalFetch;
     if (originalEnv === undefined) delete process.env.GATE_KEY; else process.env.GATE_KEY = originalEnv;
+  }
+});
+
+test("refresh route rejects cross-site POSTs before doing any work", async () => {
+  const providers = { "p1": { baseURL: "http://p1.local/v1", apiKeyEnv: "P1" } };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("must not fetch"); };
+  try {
+    const { ctx, routes } = makeCtx({ providers, fetchImpl: async () => { throw new Error("must not fetch"); } });
+    apply(ctx);
+    const handler = routes.get("/model-garden/refresh-models");
+
+    // A cross-site "simple" POST carries Sec-Fetch-Site even without Origin,
+    // and must not be able to trigger a provider re-sync.
+    const a = responseSpy();
+    await handler({ method: "POST", headers: { "sec-fetch-site": "cross-origin" } }, a);
+    assert.equal(a.status, 403);
+    assert.match(JSON.parse(a.body).error, /cross-site/);
+
+    // A foreign Origin is rejected even when the browser sent no fetch metadata.
+    const b = responseSpy();
+    await handler({ method: "POST", headers: { origin: "http://evil.example", host: "127.0.0.1:3080" } }, b);
+    assert.equal(b.status, 403);
+
+    // The picker's own request (same origin) passes the guard.
+    const c = responseSpy();
+    await handler({
+      method: "POST",
+      headers: { origin: "http://127.0.0.1:3080", host: "127.0.0.1:3080", "sec-fetch-site": "same-origin" },
+    }, c);
+    assert.notEqual(c.status, 403);
+
+    // No route may advertise a wildcard CORS origin: the picker is same-origin,
+    // and a wildcard would expose session usage to any website.
+    for (const h of [a.headers, b.headers, c.headers]) {
+      assert.equal(h["access-control-allow-origin"], undefined);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a thrown refresh pass releases the single-flight gate (never a dead button)", async () => {
+  const providers = { "p1": { baseURL: "http://p1.local/v1", apiKeyEnv: "P1" } };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("offline"); };
+  try {
+    const { ctx, routes, settings } = makeCtx({ providers, fetchImpl: async () => { throw new Error("offline"); } });
+    const healthy = settings.get;
+    apply(ctx);
+    const handler = routes.get("/model-garden/refresh-models");
+
+    // settings.get() throwing rejects the pass itself.
+    settings.get = () => { throw new Error("boom"); };
+    const first = responseSpy();
+    await handler({ method: "POST" }, first);
+    assert.equal(first.status, 500);
+    assert.match(JSON.parse(first.body).error, /boom/);
+
+    // The gate must have been reopened — otherwise every later click gets 409.
+    settings.get = healthy;
+    const second = responseSpy();
+    await handler({ method: "POST" }, second);
+    assert.notEqual(second.status, 409, "gate leaked: route stuck at 409");
+    assert.equal(second.status, 200);
+    assert.equal(JSON.parse(second.body).results.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("only one refresh pass runs at a time", async () => {
+  const providers = { "p1": { baseURL: "http://p1.local/v1", apiKeyEnv: "P1" } };
+  const originalFetch = globalThis.fetch;
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  globalThis.fetch = () => held.then(() => ({ ok: true, status: 200, json: async () => ({ data: [{ id: "a" }] }) }));
+  try {
+    const { ctx, routes } = makeCtx({ providers, fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) }) });
+    apply(ctx);
+    const handler = routes.get("/model-garden/refresh-models");
+
+    const first = responseSpy();
+    const running = handler({ method: "POST" }, first);
+
+    // Parallel click while the first pass is still in flight → 409, and the
+    // second pass must NOT start (it would race the settings write).
+    const second = responseSpy();
+    await handler({ method: "POST" }, second);
+    assert.equal(second.status, 409);
+
+    release();
+    await running;
+    assert.equal(first.status, 200);
+    assert.equal(JSON.parse(first.body).results[0].added, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

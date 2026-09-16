@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-garden",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "A searchable, sortable model picker for the DeepSeek Harness Web UI — provider groups, favorites, hidden-models blacklist, live per-task cost, prices and context windows, plus a refresh button that re-syncs every provider model list from its live API.",
   "keywords": [
     "deepseek-harness",

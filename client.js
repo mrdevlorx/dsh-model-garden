@@ -57,7 +57,7 @@ window.__ModuleLoader__.load({
         // Trigger — same geometry as the native ModelSelect trigger (28px pill).
         // Wrapped in a row so a reasoning-effort dropdown can sit next to it.
         ".mg-trigger-row { display: inline-flex; align-items: center; gap: 6px; }",
-        ".mg-trigger { display: inline-flex; align-items: center; gap: 4px; height: 28px; min-width: 0; max-width: 220px; padding: 0 4px 0 8px; border: none; border-radius: 24px; outline: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; }",
+        ".mg-trigger { display: inline-flex; align-items: center; gap: 4px; height: 28px; min-width: 0; max-width: min(360px, 45cqw); padding: 0 4px 0 8px; border: none; border-radius: 24px; outline: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; }",
         ".mg-trigger:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-trigger:focus-visible { box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); }",
         ".mg-trigger.locked { color: var(--dsw-alias-label-dimmed); cursor: default; }",
@@ -67,20 +67,21 @@ window.__ModuleLoader__.load({
         ".mg-effort-label { flex: 0 1 auto; }",
         // The floating effort menu — same surface, border, radius, shadow and
         // z-order as the model picker panel (--mg-panel-bg).
-        ".mg-effort-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 20; width: 168px; max-height: 320px; overflow-y: auto; padding: 4px; border: 1px solid var(--dsw-alias-border-inverted); border-radius: 12px; box-shadow: var(--dsw-shadow-lv3); --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); color: var(--dsw-alias-label-primary); }",
+        ".mg-effort-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 20; width: 168px; max-height: 320px; overflow-y: auto; padding: 4px; border: 0; border-radius: 20px; box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); color: var(--dsw-alias-label-primary); }",
         ".mg-effort-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: none; border-radius: 8px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; font-weight: 500; line-height: 20px; text-align: left; cursor: pointer; }",
         ".mg-effort-item:hover { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-effort-item.active { color: var(--dsw-alias-state-business-primary); }",
         ".mg-effort-item-check { margin-left: auto; flex: none; }",
+        ".mg-effort-item-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
         ".mg-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }",
         ".mg-chev { flex: none; color: var(--dsw-alias-label-caption); font-size: 10px; transition: transform var(--ds-transition-duration-fast, .12s) var(--ds-ease-in-out, ease); }",
         // Rotation follows each trigger's OWN expanded state — the model
         // chevron and the effort chevron never rotate each other.
         ".mg-trigger[aria-expanded='true'] .mg-chev { transform: rotate(180deg); }",
-        // Panel — native menu geometry (radius 12, lv3 shadow) but FIXED size,
-        // and a surface slightly darker than the chat background.
-        ".mg-panel { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 20; display: flex; flex-direction: column; width: min(440px, 100vw - 32px); height: min(480px, 100vh - 96px); overflow: hidden; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); border: 1px solid var(--dsw-alias-border-inverted); border-radius: 12px; box-shadow: var(--dsw-shadow-lv3); color: var(--dsw-alias-label-primary); --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }",
-        "@supports (background: color-mix(in srgb, red, blue)) { .mg-panel, .mg-tooltip, .mg-costpop, .mg-effort-menu { --mg-panel-bg: color-mix(in srgb, var(--dsw-specific-menu), #000 10%); } }",
+        // Panel — the native menu surface (same token, radius 20 and
+        // `--dsw-elevation-prominent` as the stock model menu) with a FIXED
+        // size, so light and dark theming match the harness exactly.
+        ".mg-panel { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 20; display: flex; flex-direction: column; width: min(440px, 100vw - 32px); height: min(480px, 100vh - 96px); overflow: hidden; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); border: 0; border-radius: 20px; box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); color: var(--dsw-alias-label-primary); --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }",
         ".mg-search { display: flex; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); }",
         ".mg-search input { flex: 1; min-width: 0; box-sizing: border-box; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 20px; outline: none; }",
         ".mg-search input::placeholder { color: var(--dsw-alias-label-dimmed); }",
@@ -132,13 +133,13 @@ window.__ModuleLoader__.load({
         // providers and models, each with a "show" link to un-hide.
         ".mg-hidepanel { position: absolute; left: 8px; right: 8px; top: 48px; z-index: 5; display: flex; flex-direction: column; box-sizing: border-box; max-height: 300px; overflow: hidden; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-shadow-lv2); font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
         ".mg-hidepanel-title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 2px; }",
-        ".mg-hidepanel-clear { margin-left: auto; flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid rgba(128,140,160,.45); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; }",
+        ".mg-hidepanel-clear { margin-left: auto; flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l3, rgba(128,140,160,.45)); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; }",
         ".mg-hidepanel-sect { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); margin: 6px 0 2px; }",
         ".mg-hidepanel-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }",
         ".mg-hideitem { display: flex; align-items: center; gap: 6px; padding: 1px 0; font-size: 11.5px; }",
         ".mg-hideitem-prov { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-caption); flex: none; }",
         ".mg-hideitem-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
-        ".mg-hideitem-show { flex: none; height: 18px; padding: 0 7px; border-radius: 6px; border: 1px solid rgba(128,140,160,.45); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 16px; cursor: pointer; }",
+        ".mg-hideitem-show { flex: none; height: 18px; padding: 0 7px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l3, rgba(128,140,160,.45)); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 16px; cursor: pointer; }",
         ".mg-hidepanel-empty { color: var(--dsw-alias-label-tertiary); font-style: italic; }",
         ".mg-empty { padding: 10px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }",
         ".mg-status { padding: 6px 10px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }",
@@ -162,8 +163,8 @@ window.__ModuleLoader__.load({
         ".mg-costpop-title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px; }",
         // copy + export sit side by side as one unit, pushed to the right.
         ".mg-costpop-btns { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 8px; }",
-        ".mg-costpop-copy { flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid rgba(128,140,160,.45); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; opacity: .85; }",
-        ".mg-costpop-copy:hover { opacity: 1; background: rgba(128,140,160,.18); }",
+        ".mg-costpop-copy { flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l3, rgba(128,140,160,.45)); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; opacity: .85; }",
+        ".mg-costpop-copy:hover { opacity: 1; background: var(--dsw-alias-interactive-bg-hover); }",
         // Table headers (pinned) share the same column raster as the rows.
         ".mg-costpop-th { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); }",
         // Clickable column headers — sort asc → desc → off, like the panel.
@@ -181,7 +182,7 @@ window.__ModuleLoader__.load({
         ".mg-costpop-num { text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-secondary); white-space: nowrap; }",
         ".mg-costpop-time { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-tertiary); white-space: nowrap; }",
         ".mg-costpop-step.dim { opacity: .55; }",
-        ".mg-costpop-sep { margin: 6px 0 4px; border-top: 1px solid rgba(128,140,160,.35); }",
+        ".mg-costpop-sep { margin: 6px 0 4px; border-top: 1px solid var(--dsw-alias-border-l2, rgba(128,140,160,.35)); }",
         // Tooltip — harness tooltip surface (dark in both themes). Rendered
         // through a body portal (see below), so it must win against every app
         // stacking context: z-index well above panels/menus.
@@ -560,13 +561,25 @@ window.__ModuleLoader__.load({
               if (models === undefined) {
                 return { sessionId, available: false, directory: null, load: () => {}, select: () => Promise.resolve(false) };
               }
-              const directory = models.directoryFor(sessionId);
+              // directoryFor() throws for a session the host cannot resolve
+              // ("session resolved no scope"). A throw inside the inject factory
+              // makes the slot renderer abdicate this entry for good (until a
+              // page reload), so degrade to the unavailable stub instead.
+              let directory = null;
+              try {
+                directory = models.directoryFor(sessionId);
+              } catch {
+                directory = null;
+              }
+              if (!directory) {
+                return { sessionId, available: false, directory: null, load: () => {}, select: () => Promise.resolve(false) };
+              }
               return {
                 sessionId,
                 available,
-                directory: directory ? directory.store : null,
-                load: () => { if (available && directory) directory.load().catch(() => {}); },
-                select: (selection) => available && directory ? directory.select(selection).then(() => true, () => false) : Promise.resolve(false),
+                directory: directory.store,
+                load: () => { if (available) directory.load().catch(() => {}); },
+                select: (selection) => available ? directory.select(selection).then(() => true, () => false) : Promise.resolve(false),
               };
             },
           },
@@ -693,6 +706,9 @@ window.__ModuleLoader__.load({
           const [sortDir, setSortDir] = React.useState("asc");
           const [, setUiTick] = React.useState(0);
           const [tip, setTip] = React.useState(null); // {g, m, left, top} | null
+          // Last model-switch failure. Rendered INSIDE the panel, which stays
+          // open on failure — a rejected select must never look like success.
+          const [selectError, setSelectError] = React.useState(null);
           // Effort dropdown (styled like the model picker) next to the model
           // name in the chat composer.
           const [effortOpen, setEffortOpen] = React.useState(false);
@@ -703,19 +719,17 @@ window.__ModuleLoader__.load({
           const status = state === null || state.status === undefined ? "idle" : state.status;
           const err = state === null || state.error === undefined ? null : state.error;
 
-          // Highest reasoning level a model offers. Adapters list efforts in
-          // ascending order (off → minimal → low → medium → high → xhigh →
-          // max), so the LAST entry is the strongest level. Falls back to the
-          // model's defaultEffort when no levels are declared.
-          function highestEffort(m) {
-            const efforts = m && m.reasoning && Array.isArray(m.reasoning.efforts) ? m.reasoning.efforts : [];
-            if (efforts.length > 0) {
-              const last = efforts[efforts.length - 1];
-              return String(last.id !== undefined && last.id !== null ? last.id : last.name);
-            }
-            if (m && m.reasoning && m.reasoning.defaultEffort !== undefined) {
-              return String(m.reasoning.defaultEffort);
-            }
+          // Reasoning level a freshly picked model starts with. The adapter's own
+          // default wins: `reasoning.efforts` documents the adapter-preferred
+          // DISPLAY order, so treating its last entry as "the strongest" would
+          // override the adapter's intent (and the cost/latency that comes with
+          // it). Without a declared default the pick omits `reasoningEffort`
+          // entirely and the adapter decides — exactly like the native picker.
+          function startEffort(m) {
+            const r = m && m.reasoning;
+            if (!r) return "";
+            const def = r.defaultEffort;
+            if (def !== undefined && def !== null && def !== "") return String(def);
             return "";
           }
 
@@ -738,9 +752,9 @@ window.__ModuleLoader__.load({
           const currentEfforts = (curModelObj && curModelObj.reasoning && curModelObj.reasoning.efforts) || [];
           const currentEffort = (function () {
             if (current !== null && current.reasoningEffort !== undefined) return String(current.reasoningEffort);
-            // No explicit effort on the selection yet → show the strongest
-            // level the model offers (defaultEffort only as fallback).
-            if (curModelObj !== null) return highestEffort(curModelObj);
+            // No explicit effort on the selection yet → mirror what picking this
+            // model would send (the adapter's default, else nothing at all).
+            if (curModelObj !== null) return startEffort(curModelObj);
             return "";
           })();
           const currentLabel = current === null ? null : (String(current.model) || null);
@@ -827,7 +841,7 @@ window.__ModuleLoader__.load({
             d.addEventListener("keydown", onKey);
             return () => d.removeEventListener("keydown", onKey);
             // eslint-disable-next-line react-hooks/exhaustive-deps
-          }, [open, effortOpen]);
+          }, [open, effortOpen, hideOpen]);
 
           // Refresh the advisory directory + prices + host catalog on open.
           React.useEffect(() => {
@@ -950,6 +964,7 @@ window.__ModuleLoader__.load({
 
           function toggleOpen() {
             if (locked) return;
+            setSelectError(null);
             if (open) { setOpen(false); setHideOpen(false); setTip(null); return; }
             setOpen(true); setQuery(""); setHideOpen(false); setTip(null); setEffortOpen(false);
           }
@@ -961,16 +976,29 @@ window.__ModuleLoader__.load({
           }
           function pick(g, m) {
             const sel = { provider: g.id, model: m.id };
-            // Every picked model starts at its HIGHEST reasoning level
-            // (efforts are listed ascending, so the last entry is the
-            // strongest); defaultEffort is only a fallback.
-            const hi = highestEffort(m);
-            if (hi !== "") sel.reasoningEffort = hi;
-            if (typeof props.select === "function") {
-              props.select(sel);
+            const eff = startEffort(m);
+            if (eff !== "") sel.reasoningEffort = eff;
+            const done = () => { setSelectError(null); setOpen(false); setTip(null); };
+            if (typeof props.select !== "function") { done(); return; }
+            let out;
+            try {
+              out = props.select(sel);
+            } catch (error) {
+              setSelectError("Could not switch model: " + (error && error.message ? error.message : String(error)));
+              return;
             }
-            setOpen(false);
-            setTip(null);
+            if (!out || typeof out.then !== "function") { done(); return; }
+            // A rejected switch must stay visible: keep the panel open and say
+            // why — the native picker keeps its menu open the same way.
+            out.then(function (ok) {
+              if (ok === false) {
+                setSelectError("Could not switch to " + String(m.id) + " — the host rejected the selection.");
+                return;
+              }
+              done();
+            }, function (error) {
+              setSelectError("Could not switch model: " + (error && error.message ? error.message : String(error)));
+            });
           }
           // Effort chosen from the compact dropdown next to the model name
           // in the chat composer: re-select the current model with that
@@ -1239,6 +1267,7 @@ window.__ModuleLoader__.load({
               ),
               status === "loading" && React.createElement("div", { className: "mg-status" }, "Loading…"),
               err && React.createElement("div", { className: "mg-error" }, err),
+              selectError && React.createElement("div", { className: "mg-error" }, selectError),
               (function () {
                 const cc = currentCost();
                 if (!cc || histErr) {
@@ -1321,7 +1350,7 @@ window.__ModuleLoader__.load({
                 React.createElement("span", { className: "mg-count" }, filtered.length + " models"),
                 React.createElement("span", {
                   className: "mg-count",
-                  style: refreshResult && refreshResult.error ? { color: "var(--dsw-alias-label-warning, #d29922)" } : undefined,
+                  style: refreshResult && refreshResult.error ? { color: "var(--dsw-alias-state-warn-label, #d29922)" } : undefined,
                   title: refreshResult && Array.isArray(refreshResult.results)
                     ? refreshResult.results.map(function (r) {
                         return r.id + ": " + r.total + " Modelle" +
