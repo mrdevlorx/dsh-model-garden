@@ -23,7 +23,21 @@
  *    scrollable, copyable) from the same data; attribution of every step
  *    to the model in effect comes from the log's request/context events —
  *    nothing extra is persisted,
- *  - hover tooltip with description, price, context window and efforts.
+ *  - interactive hover detail card with every known fact about exactly this
+ *    route::model — base rows are instant (directory, prices from
+ *    models.dev, host catalog); the enriched grid (modalities, tool calling,
+ *    structured output, temperature, attachments, reasoning, open weights,
+ *    knowledge cutoff, release/updated dates, deprecation status, aliases,
+ *    provider env key, local-gateway raw metadata, provenance) comes from
+ *    the host's `GET /model-garden/model-detail` ONCE per model and is then
+ *    cached in localStorage for 24 h (the host pre-warms its 24 h models.dev
+ *    cache at startup, so even the first card never waits),
+ *  - "Use for all sub-agents" checkbox inside that card: makes the hovered
+ *    route::model THE model every future subagent runs with, regardless of
+ *    the model the spawning session uses. Persisted in the DSH settings
+ *    document (`model-garden:` namespace) and enforced by the host at
+ *    `agents.create`/`agents.resume` — the one seam that spawn, fork,
+ *    continuable, workflow-bridge and cold-resumed children share.
  *
  * The seat is a `single` slot with shadowing: registering at priority -1 wins
  * over the native seat (registered at 0) without disturbing its registration.
@@ -53,10 +67,15 @@ window.__ModuleLoader__.load({
       tag.dataset.pluginCss = CSS_ID;
       tag.textContent = [
         ".mg-outer { position: relative; }",
-        ".mg-backdrop { position: fixed; inset: 0; z-index: 19; background: transparent; border: none; padding: 0; margin: 0; cursor: default; }",
+        ".mg-backdrop { position: fixed; inset: 0; z-index: 1099; background: transparent; border: none; padding: 0; margin: 0; cursor: default; }",
         // Trigger — same geometry as the native ModelSelect trigger (28px pill).
         // Wrapped in a row so a reasoning-effort dropdown can sit next to it.
-        ".mg-trigger-row { display: inline-flex; align-items: center; gap: 6px; }",
+        // The trigger row sits ABOVE the open-panel backdrop: the backdrop covers the
+        // whole viewport, so without this the reasoning-effort pill beside the
+        // model name was unclickable while the panel was open (the click just
+        // dismissed the panel, costing a second attempt). Equal to the panel's
+        // own layer, and the panel paints later, so the two never fight.
+        ".mg-trigger-row { position: relative; z-index: 1100; display: inline-flex; align-items: center; gap: 6px; }",
         ".mg-trigger { display: inline-flex; align-items: center; gap: 4px; height: 28px; min-width: 0; max-width: min(360px, 45cqw); padding: 0 4px 0 8px; border: none; border-radius: 24px; outline: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; font: inherit; font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; }",
         ".mg-trigger:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-trigger:focus-visible { box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); }",
@@ -64,10 +83,10 @@ window.__ModuleLoader__.load({
         // Reasoning-effort trigger: visually identical to the model trigger.
         ".mg-effort-outer { position: relative; display: inline-flex; align-items: center; }",
         ".mg-effort-trigger { max-width: 110px; }",
-        ".mg-effort-label { flex: 0 1 auto; }",
+        ".mg-effort-label { flex: 0 1 auto; color: var(--dsw-alias-label-caption); }",
         // The floating effort menu — same surface, border, radius, shadow and
         // z-order as the model picker panel (--mg-panel-bg).
-        ".mg-effort-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 20; width: 168px; max-height: 320px; overflow-y: auto; padding: 4px; border: 0; border-radius: 20px; box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); color: var(--dsw-alias-label-primary); }",
+        ".mg-effort-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 1100; width: 168px; max-height: 320px; overflow-y: auto; padding: 4px; border: 0; border-radius: 20px; box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); color: var(--dsw-alias-label-primary); }",
         ".mg-effort-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: none; border-radius: 8px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; font-weight: 500; line-height: 20px; text-align: left; cursor: pointer; }",
         ".mg-effort-item:hover { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-effort-item.active { color: var(--dsw-alias-state-business-primary); }",
@@ -81,9 +100,15 @@ window.__ModuleLoader__.load({
         // Panel — the native menu surface (same token, radius 20 and
         // `--dsw-elevation-prominent` as the stock model menu) with a FIXED
         // size, so light and dark theming match the harness exactly.
-        ".mg-panel { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 20; display: flex; flex-direction: column; width: min(440px, 100vw - 32px); height: min(480px, 100vh - 96px); overflow: hidden; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); border: 0; border-radius: 20px; box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); color: var(--dsw-alias-label-primary); --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }",
-        ".mg-search { display: flex; align-items: center; gap: 6px; padding: 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); }",
-        ".mg-search input { flex: 1; min-width: 0; box-sizing: border-box; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 20px; outline: none; }",
+        // Panel — mirrors the native `_menu` surface token-for-token: content
+        // sized (max-width/max-height, not fixed), 4px padding, radius 20,
+        // elevation-prominent + hairline stroke. No forced 440x480 box.
+        ".mg-panel { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 1100; display: flex; flex-direction: column; width: max-content; min-width: min(272px, 100vw - 32px); max-width: min(420px, 100vw - 32px); max-height: min(360px, 100vh - 96px); overflow: hidden; box-sizing: border-box; padding: 4px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); border: 0; border-radius: 20px; box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); color: var(--dsw-alias-label-primary); --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }",
+        // Search row — hairline divider instead of a hard border; the input is
+        // a quiet inset field (no heavy 1px outline fighting the menu surface)
+        // that only picks up an accent ring on focus.
+        ".mg-search { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 4px 6px; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); }",
+        ".mg-search input { flex: 1; min-width: 0; box-sizing: border-box; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-interactive-bg-hover)); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 20px; outline: none; transition: border-color var(--ds-transition-duration-fast, .12s) var(--ds-ease-in-out, ease); }",
         ".mg-search input::placeholder { color: var(--dsw-alias-label-dimmed); }",
         ".mg-search input:focus { border-color: var(--dsw-alias-state-business-primary); }",
         ".mg-local { flex: none; display: inline-flex; align-items: center; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; }",
@@ -91,21 +116,43 @@ window.__ModuleLoader__.load({
         ".mg-local.on { background: var(--dsw-alias-state-business-tertiary); border-color: transparent; color: var(--dsw-alias-state-business-primary); }",
         // Refresh (⟳) button shares the toggle geometry; while busy it stays
         // highlighted (:disabled blocks clicks, the ellipsis signals work).
-        ".mg-refresh { padding: 0 9px; font-size: 14px; }",
+        ".mg-refresh { padding: 0 10px; font-size: 12px; }",
         ".mg-refresh:disabled { cursor: wait; }",
-        // Table header — clickable column titles, table-style sorting.
-        ".mg-thead { display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px 24px; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--dsw-alias-border-l2); background: var(--mg-panel-bg, var(--dsw-specific-menu)); font-size: 11px; font-weight: 600; line-height: 16px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); }",
+        // Table header — clickable column titles, table-style sorting. Softer
+        // than before: dropped uppercase + letter-spacing, which read as a
+        // technical spreadsheet, in favour of the native menu's plain caption
+        // weight, and a lighter hairline instead of a hard border.
+        // "Recent" shortcut strip — a horizontal row of compact chips rather than a
+        // second copy of those models as full list rows. As rows, every recent
+        // model appeared twice in one view (once here, once under its provider),
+        // which read as duplicated information.
+        ".mg-recent { flex: none; display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); }",
+        ".mg-recent::-webkit-scrollbar { display: none; }",
+        ".mg-recent-chip { flex: none; max-width: 168px; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border: none; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; font-weight: 500; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }",
+        ".mg-recent-chip:hover { color: var(--dsw-alias-label-primary); }",
+        ".mg-recent-chip:focus-visible { box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); outline: none; }",
+        // The chip for the model currently in effect, matching the ✓ accent.
+        ".mg-recent-chip.on { background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-state-business-primary); }",
+".mg-thead { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px 24px; align-items: center; gap: 8px; padding: 4px 8px 6px; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); background: var(--mg-panel-bg, var(--dsw-specific-menu)); font-size: 11px; font-weight: 500; line-height: 16px; color: var(--dsw-alias-label-caption); }",
         ".mg-th { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: none; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; cursor: pointer; }",
         ".mg-th:hover { color: var(--dsw-alias-label-primary); }",
         ".mg-th.active { color: var(--dsw-alias-state-business-primary); }",
         ".mg-th.ctx, .mg-th.price { justify-content: flex-start; }",
-        ".mg-th.star { justify-content: center; font-size: 13px; text-transform: none; }",
-        ".mg-th .mg-ind { font-size: 8px; }",
+        ".mg-th.star { justify-content: center; font-size: 14px; text-transform: none; }",
+        ".mg-th .mg-ind { font-size: 9px; }",
         ".mg-count { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); }",
-        ".mg-groups { flex: 1; min-height: 0; overflow-y: auto; padding: 0 4px 4px; }",
+        // Groups scroll area — native `_groups` carries NO padding of its own
+        // (the panel's own 4px padding frames the content). The old extra
+        // `0 4px 4px` pushed rows inward and broke native alignment.
+        ".mg-groups { flex: 1; min-height: 0; overflow-y: auto; }",
         ".mg-group + .mg-group { margin-top: 4px; }",
-        // Group header — sticky like the native groupTitle.
-        ".mg-grouphead { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 5px 8px 3px; font: inherit; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); background: var(--mg-panel-bg, var(--dsw-specific-menu)); border: none; cursor: pointer; text-align: left; border-radius: 6px; }",
+        // Group header — sticky, same geometry as the native `_groupTitle`:
+        // no stray border-radius (native draws no rounded rect behind it).
+        ".mg-grouphead { position: sticky; top: 27px; z-index: 1; display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 5px 8px 3px; font: inherit; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); background: var(--mg-panel-bg, var(--dsw-specific-menu)); border: none; cursor: pointer; text-align: left; }",
+        // The "Recent" header is a label, not a control: same geometry, no caret
+        // rotation, no pointer cursor, not focusable.
+        ".mg-grouphead.static { cursor: default; }",
+        ".mg-grouphead.static:hover { color: var(--dsw-alias-label-tertiary); }",
         ".mg-caret { display: inline-block; width: 12px; flex: none; font-size: 9px; color: var(--dsw-alias-label-caption); transition: transform var(--ds-transition-duration-fast, .12s) var(--ds-ease-in-out, ease); }",
         ".mg-grouphead.closed .mg-caret { transform: rotate(-90deg); }",
         ".mg-badge { margin-left: auto; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 8px; background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-state-business-primary); }",
@@ -115,6 +162,10 @@ window.__ModuleLoader__.load({
         // column alignment. Fixed px widths keep all rows in lockstep.
         ".mg-model { display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px 24px; align-items: center; gap: 8px; width: 100%; min-height: 38px; box-sizing: border-box; padding: 6px 8px; border: none; border-radius: 10px; outline: none; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }",
         ".mg-model:hover, .mg-model:focus-visible { background: var(--dsw-alias-interactive-bg-hover); }",
+        // Keyboard cursor — the SAME surface tone as :hover, so a row driven by
+        // the arrow keys looks like one under the pointer, plus a slim accent
+        // edge so the position is obvious when arrowing quickly.
+        ".mg-model.active { background: var(--dsw-alias-interactive-bg-hover); box-shadow: inset 2px 0 0 var(--dsw-alias-state-business-primary); }",
         ".mg-check { text-align: center; font-size: 12px; line-height: 1; color: var(--dsw-alias-label-primary); }",
         ".mg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; line-height: 20px; }",
         ".mg-name .mg-prov { font-size: 11px; font-weight: 400; color: var(--dsw-alias-label-caption); }",
@@ -128,10 +179,14 @@ window.__ModuleLoader__.load({
         // the model (or whole provider) so the picker list shrinks.
         ".mg-hide { cursor: pointer; font-size: 12px; line-height: 1; padding: 2px 3px; border-radius: 4px; text-align: center; color: var(--dsw-alias-label-caption); opacity: 0; }",
         ".mg-model:hover .mg-hide, .mg-grouphead:hover .mg-hide { opacity: 1; }",
+        "@media (hover: none) { .mg-hide { opacity: .6; } }",
         ".mg-hide.on { color: var(--dsw-alias-state-business-primary); opacity: 1; }",
+        // A focusable control must never stay invisible: opacity:0 until
+        // :hover would hide it from a keyboard user entirely.
+        ".mg-star:focus-visible, .mg-hide:focus-visible { opacity: 1; outline: none; box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); }",
         // Hidden-settings popup: a compact card listing the blacklisted
         // providers and models, each with a "show" link to un-hide.
-        ".mg-hidepanel { position: absolute; left: 8px; right: 8px; top: 48px; z-index: 5; display: flex; flex-direction: column; box-sizing: border-box; max-height: 300px; overflow: hidden; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-shadow-lv2); font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
+        ".mg-hidepanel { position: absolute; left: 8px; right: 8px; top: 48px; z-index: 5; display: flex; flex-direction: column; box-sizing: border-box; max-height: 300px; overflow: hidden; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv2)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
         ".mg-hidepanel-title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 2px; }",
         ".mg-hidepanel-clear { margin-left: auto; flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l3, rgba(128,140,160,.45)); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; }",
         ".mg-hidepanel-sect { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); margin: 6px 0 2px; }",
@@ -141,10 +196,18 @@ window.__ModuleLoader__.load({
         ".mg-hideitem-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
         ".mg-hideitem-show { flex: none; height: 18px; padding: 0 7px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l3, rgba(128,140,160,.45)); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 16px; cursor: pointer; }",
         ".mg-hidepanel-empty { color: var(--dsw-alias-label-tertiary); font-style: italic; }",
-        ".mg-empty { padding: 10px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }",
-        ".mg-status { padding: 6px 10px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }",
-        ".mg-error { margin: 4px 8px 0; padding: 7px 8px; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; }",
-        ".mg-cost { padding: 6px 10px; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-business-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".mg-empty { flex: none; padding: 10px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }",
+        ".mg-status { flex: none; padding: 6px 10px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }",
+        // Error strip — native metrics: full-bleed inside the menu's own 4px padding
+        // (the old 8px side inset made the band narrower than every other
+        // element) and a flex row so the Retry action has somewhere to sit.
+        ".mg-error { flex: none; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 4px; padding: 7px 8px; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; }",
+        ".mg-retry { flex: none; padding: 0; border: none; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }",
+        // Warning strip (e.g. a gateway the Live filter could not enumerate).
+        ".mg-warn { flex: none; padding: 6px 10px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-warn-label); background: var(--dsw-alias-bg-module-platform); }",
+        // Keyboard hint strip under the footer.
+        ".mg-hint { flex: none; padding: 0 10px 6px; font-size: 10.5px; line-height: 16px; color: var(--dsw-alias-label-caption); text-align: center; }",
+        ".mg-cost { flex: none; padding: 6px 10px; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-business-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
         ".mg-cost-detail { color: var(--dsw-alias-label-tertiary); }",
         // The reasoning-effort choice lives in the chat composer next to the
         // model name (mg-effort-outer/menu) — no UI for it inside the panel.
@@ -155,7 +218,7 @@ window.__ModuleLoader__.load({
         ".mg-costbtn { display: inline-block; padding: 1px 8px 1px 10px; margin: -1px 0 -1px -10px; border: 1px solid transparent; border-radius: 8px; cursor: help; }",
         // Interactive popup: the pointer may enter it, scroll the step list
         // and press the copy button.
-        ".mg-costpop { position: fixed; z-index: 1001; display: flex; flex-direction: column; box-sizing: border-box; width: 380px; overflow: hidden; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-shadow-lv2); pointer-events: auto; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); overscroll-behavior: contain; }",
+        ".mg-costpop { position: fixed; z-index: 1101; display: flex; flex-direction: column; box-sizing: border-box; width: 380px; overflow: hidden; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv2)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); pointer-events: auto; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); overscroll-behavior: contain; }",
         // Only the step list scrolls; title + model summary stay pinned.
         // flex:1 + min-height:0 is what makes the scroll area reachable
         // to its very top (a plain overflow-y:auto flex child clips it).
@@ -170,10 +233,15 @@ window.__ModuleLoader__.load({
         // Clickable column headers — sort asc → desc → off, like the panel.
         ".mg-costpop-h { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: none; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; cursor: pointer; }",
         ".mg-costpop-h:hover { color: var(--dsw-alias-label-primary); }",
-        ".mg-costpop-h .mg-ind { font-size: 8px; }",
+        ".mg-costpop-h .mg-ind { font-size: 9px; }",
         ".mg-costpop-h.n { width: 100%; justify-content: flex-end; }",
         // Model summary table: Model | × | In | Out | Cache | ≈
         ".mg-costpop-models, .mg-costpop-mrow { display: grid; grid-template-columns: minmax(0,1fr) 30px 46px 46px 54px 58px; gap: 6px; align-items: center; }",
+        // The summary is a column of rows, so it needs its own box: capped at
+        // 40% of the popup and scrollable. Rendered as bare flex children it
+        // pushed the step list past the popup's `overflow:hidden` edge, and a
+        // session touching many models made both unreachable.
+        ".mg-costpop-mrows { flex: 0 1 auto; min-height: 0; max-height: 40%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }",
         ".mg-costpop-mrow { padding: 2px 0; }",
         // Step table: Time | Model | In | Out | Cache
         ".mg-costpop-steps, .mg-costpop-step { display: grid; grid-template-columns: 74px minmax(0,1fr) 46px 46px 54px; gap: 6px; align-items: center; }",
@@ -183,16 +251,49 @@ window.__ModuleLoader__.load({
         ".mg-costpop-time { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--dsw-alias-label-tertiary); white-space: nowrap; }",
         ".mg-costpop-step.dim { opacity: .55; }",
         ".mg-costpop-sep { margin: 6px 0 4px; border-top: 1px solid var(--dsw-alias-border-l2, rgba(128,140,160,.35)); }",
-        // Tooltip — harness tooltip surface (dark in both themes). Rendered
-        // through a body portal (see below), so it must win against every app
-        // stacking context: z-index well above panels/menus.
-        ".mg-tooltip { position: fixed; z-index: 1000; min-width: 200px; max-width: 320px; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-shadow-lv2); pointer-events: none; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
-        ".mg-tt-name { font-size: 13px; font-weight: 600; line-height: 20px; margin-bottom: 2px; }",
-        ".mg-tt-prov { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-state-business-primary); margin-bottom: 5px; }",
-        ".mg-tt-id { font-family: var(--ds-font-family-code); font-size: 10.5px; color: var(--dsw-alias-label-secondary); margin: 2px 0 5px; word-break: break-all; }",
+        // Tooltip — the theme's tip surface. Rendered through a body portal
+        // (see below), so it must win against every app stacking context.
+        //
+        // The old value was `--dsw-specific-menu` (= `--dsw-alias-bg-layer-3`,
+        // pure white in light mode), so the detail card was a white card on a
+        // white page that only read as a tooltip because of its shadow.
+        // `--dsw-specific-tip` is the surface the host itself uses for tips
+        // (bluish-60 light / bluish-800 dark): it contrasts in BOTH themes
+        // while staying on the same neutral ramp, so the existing
+        // `--dsw-alias-label-*` text tokens stay readable on it in both.
+        // (The always-dark `--dsw-alias-tooltip-bg` was rejected here: it
+        // would need light text tokens, which light mode does not provide.)
+        //
+        // The card is INTERACTIVE (sub-agent checkbox, mouse can travel into
+        // it), so unlike before `pointer-events` stays on and closing is
+        // delayed by the same 180 ms handoff the cost popup uses.
+        ".mg-tooltip { position: fixed; z-index: 1101; min-width: 200px; max-width: 320px; max-height: min(60vh, 420px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); padding: 9px 11px; border-radius: 10px; background: var(--dsw-specific-tip); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv2)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); pointer-events: auto; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
+        ".mg-tt-name { font-size: 13px; font-weight: 600; line-height: 20px; margin-bottom: 2px; word-break: break-word; }",
+        // "Local" badge — shown only for a model served from a loopback/LAN endpoint.
+        ".mg-tt-local { display: inline-block; margin-top: 7px; padding: 1px 6px; border-radius: 6px; background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-state-business-primary); font-size: 10px; font-weight: 500; line-height: 15px; }",
+        // Deprecation / subscription badges sit next to the name.
+        ".mg-tt-status { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: var(--dsw-alias-interactive-bg-hover-danger, rgba(224,80,80,.15)); color: var(--dsw-alias-state-error-primary); font-size: 10px; font-weight: 500; line-height: 15px; }",
+        ".mg-tt-sub { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-state-business-primary); font-size: 10px; font-weight: 500; line-height: 15px; }",
+        ".mg-tt-id { font-family: var(--ds-font-family-code); font-size: 10.5px; color: var(--dsw-alias-label-tertiary); margin: 0 0 6px; word-break: break-all; }",
         ".mg-tt-desc { color: var(--dsw-alias-label-secondary); margin-bottom: 6px; }",
         ".mg-tt-row { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }",
-        ".mg-tt-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; padding-top: 5px; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 10.5px; color: var(--dsw-alias-label-caption); }"
+        // Detail sections: hairline-separated groups of fact rows; the
+        // key/value grid keeps keys at caption weight and wraps long values.
+        ".mg-tt-grid { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; align-items: baseline; }",
+        ".mg-tt-skel { grid-column: 1; font-size: 10.5px; color: var(--dsw-alias-label-dimmed); white-space: nowrap; }",
+        ".mg-tt-val { grid-column: 2; min-width: 0; word-break: break-word; color: var(--dsw-alias-label-secondary); }",
+        ".mg-tt-val strong { font-weight: 500; color: var(--dsw-alias-label-primary); }",
+        ".mg-tt-sep { grid-column: 1 / -1; margin: 6px 0 4px; border-top: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); }",
+        // Sub-agent default row: the checkbox lives INSIDE the tip card, so the
+        // pointer can reach it; a Hint line explains the consequence.
+        ".mg-tt-subagent { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; padding: 7px 8px; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover); cursor: pointer; }",
+        ".mg-tt-subagent:hover { background: var(--dsw-alias-interactive-bg-hover-active, var(--dsw-alias-interactive-bg-hover)); }",
+        ".mg-tt-subagent input { margin: 2px 0 0; width: 13px; height: 13px; flex: none; accent-color: var(--dsw-alias-state-business-primary); cursor: pointer; pointer-events: auto; }",
+        ".mg-tt-subagent-label { flex: 1 1 auto; min-width: 0; font-size: 11.5px; line-height: 16px; color: var(--dsw-alias-label-primary); }",
+        ".mg-tt-subagent-hint { display: block; margin-top: 2px; font-size: 10.5px; line-height: 15px; color: var(--dsw-alias-label-tertiary); word-break: break-word; }",
+        // Sources footer: honest provenance of the card (which slice spoke).
+        ".mg-tt-src { margin-top: 7px; font-size: 10px; color: var(--dsw-alias-label-dimmed); word-break: break-word; }",
+        ".mg-tt-code { font-family: var(--ds-font-family-code); font-size: 10px; }",
       ].join("\n");
       document.head.appendChild(tag);
     }
@@ -226,6 +327,42 @@ window.__ModuleLoader__.load({
       if (i === -1) list.push(key); else list.splice(i, 1);
       favCache = list;
       persistList(FAV_KEY, list);
+    }
+
+    // ---- Recently used models ----
+    // Favorites are opt-in and can be empty for a long time; what a picker
+    // needs first is the handful of models you actually switch between. Keep
+    // the last 6 selections, newest first, and pin them in their own group so
+    // the model you want is one keypress away instead of a search.
+    const RECENT_KEY = "dsh.modelgarden.recent";
+    const RECENT_MAX = 6;
+    let recentCache = null;
+    function readRecent() {
+      if (recentCache === null) recentCache = storedList(RECENT_KEY);
+      return recentCache;
+    }
+    function noteRecent(provider, model) {
+      const key = String(provider) + "::" + String(model);
+      const list = readRecent().filter((k) => k !== key);
+      list.unshift(key);
+      while (list.length > RECENT_MAX) list.pop();
+      recentCache = list;
+      persistList(RECENT_KEY, list);
+    }
+    // Drop entries whose provider or model no longer exists (renamed route,
+    // removed model) so the group never renders a dead row.
+    function recentRows(groups) {
+      const byKey = new Map();
+      for (const g of groups) {
+        if (!g || !g.models) continue;
+        for (const m of g.models) byKey.set(g.id + "::" + m.id, { g: g, m: m });
+      }
+      const out = [];
+      for (const key of readRecent()) {
+        const hit = byKey.get(key);
+        if (hit) out.push(hit);
+      }
+      return out;
     }
 
     const COLL_KEY = "dsh.modelgarden.collapsed";
@@ -328,6 +465,25 @@ window.__ModuleLoader__.load({
     }
     function cacheFresh(c) {
       return !!c && (Date.now() - c.at) < PRICE_TTL;
+    }
+    // Honest price-source label. The status line used to read
+    // "prices: models.dev" unconditionally, even when the fetch had failed and
+    // no price data was loaded at all — it claimed a data source that was not
+    // actually backing the numbers on screen.
+    function pricesLabel() {
+      if (pricesFailedAt !== 0 && (priceMap === null || Object.keys(priceMap).length === 0)) {
+        return "prices unavailable";
+      }
+      if (priceMap === null) return "loading prices…";
+      const n = Object.keys(priceMap).length;
+      if (n === 0) return "prices unavailable";
+      const c = loadPriceCache();
+      if (c && typeof c.at === "number") {
+        const mins = Math.max(0, Math.round((Date.now() - c.at) / 60000));
+        const age = mins < 60 ? mins + " min" : Math.round(mins / 60) + " h";
+        return "prices: models.dev · " + age + " ago";
+      }
+      return "prices: models.dev";
     }
     // Provider-id aliases: a DSH route id can differ from the models.dev
     // catalog id (e.g. route "deepseek-official" vs. catalog "deepseek").
@@ -439,7 +595,14 @@ window.__ModuleLoader__.load({
         if (priceMap === null && cached) priceMap = cached.map; // stale beats nothing
         return Promise.resolve(priceMap || {});
       }
-      return globalThis.fetch(PRICE_URL)
+      // Promise.resolve() first: this function is not `async`, so a missing
+      // globalThis.fetch would throw SYNCHRONOUSLY inside the effect that
+      // calls it and unmount the tree instead of just reporting a bad price.
+      return Promise.resolve()
+        .then(function () {
+          if (typeof globalThis.fetch !== "function") throw new Error("fetch unavailable");
+          return globalThis.fetch(PRICE_URL);
+        })
         .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
         .then(function (d) {
           const map = {};
@@ -493,8 +656,12 @@ window.__ModuleLoader__.load({
     // models.dev does not know. The host caches the build; the client keeps it
     // in memory for the page lifetime.
     let catalogMap = null; // { "provider::model": { context?, maxOutput? } }
-    function fetchCatalog() {
-      if (catalogMap !== null) return Promise.resolve(catalogMap);
+    function fetchCatalog(force) {
+      // `force` drops the page-lifetime cache and re-reads. The host clears
+      // its own cache when a refresh writes new model lists, so the client has
+      // to ask again too — otherwise a just-refreshed model keeps showing no
+      // context window until a full page reload.
+      if (catalogMap !== null && !force) return Promise.resolve(catalogMap);
       return globalThis.fetch("/model-garden/catalog")
         .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
         .then(function (d) {
@@ -502,7 +669,8 @@ window.__ModuleLoader__.load({
           return catalogMap;
         })
         .catch(function () {
-          catalogMap = {};
+          // A failed forced re-read must not blank a good cached catalog.
+          if (catalogMap === null) catalogMap = {};
           return catalogMap;
         });
     }
@@ -532,6 +700,145 @@ window.__ModuleLoader__.load({
         return catalogMap[key].local;
       }
       return priceFor(provider, model) === undefined;
+    }
+
+    // ---- Hover detail card (host model-detail slices, cached locally) ----
+    // The card renders INSTANTLY from directory/price data, then enriches
+    // with the host's merged detail (adapter + models.dev + local gateway
+    // metadata). Every fetch happens once per model and survives in
+    // localStorage for 24 h — the never-wait-again promise; the host itself
+    // keeps its sources warm (24 h models.dev cache, pre-warmed at startup).
+    const DETAIL_KEY = "dsh.modelgarden.details";
+    const DETAIL_TTL = 86400000; // 24 h, mirroring the host's models.dev TTL
+    let detailMap = null; // "provider::model" -> { at, detail }
+    const detailInflight = new Map();
+
+    function loadDetailCache() {
+      try {
+        const raw = globalThis.localStorage.getItem(DETAIL_KEY);
+        if (!raw) return null;
+        const p = JSON.parse(raw);
+        if (p && typeof p === "object" && p.map && typeof p.at === "number") {
+          // One big object per page lifetime; entries expire individually.
+          return (p.map && typeof p.map === "object") ? p.map : {};
+        }
+      } catch {}
+      return null;
+    }
+    function detailStore() {
+      if (detailMap === null) {
+        detailMap = loadDetailCache();
+        if (detailMap === null) detailMap = {};
+      }
+      return detailMap;
+    }
+    function persistDetailCache() {
+      try {
+        globalThis.localStorage.setItem(DETAIL_KEY, JSON.stringify({ at: Date.now(), map: detailStore() }));
+      } catch {}
+    }
+    // Already-cached detail (or null). Instant: no network at hover time.
+    // Empty entries (host answered 404: nothing known) expire after 10 min —
+    // the "nothing" verdict may have been produced while the host's models.dev
+    // pre-warm was still in flight — while real detail cards live a full day.
+    const DETAIL_TOMBSTONE_TTL = 600000;
+    function cachedDetail(provider, model) {
+      const hit = detailStore()["" + provider + "::" + model];
+      if (hit && typeof hit === "object" && hit.detail) {
+        const ttl = (typeof hit.detail === "object" && Object.keys(hit.detail).length > 0) ? DETAIL_TTL : DETAIL_TOMBSTONE_TTL;
+        if ((Date.now() - hit.at) < ttl) {
+          return (typeof hit.detail === "object" && Object.keys(hit.detail).length > 0) ? hit.detail : {};
+        }
+      }
+      return null;
+    }
+    // Kick ONE detail fetch per model; `onArrived` re-renders the open card.
+    function ensureDetail(provider, model, onArrived) {
+      const key = provider + "::" + model;
+      if (cachedDetail(provider, model) !== null) return;
+      if (detailInflight.has(key)) return;
+      const p = globalThis.fetch("/model-garden/model-detail?provider=" + encodeURIComponent(String(provider)) + "&model=" + encodeURIComponent(String(model)))
+        .then(function (r) {
+          if (!r.ok) {
+            // 404 = unknown model: park a tombstone so every later hover of
+            // the SAME dead route answers instantly instead of re-fetching.
+            if (r.status === 404) return { notKnown: true };
+            throw new Error(String(r.status));
+          }
+          return r.json();
+        })
+        .then(function (d) {
+          detailInflight.delete(key);
+          if (d && typeof d === "object") {
+            detailStore()["" + key] = { at: Date.now(), detail: d.notKnown ? {} : d };
+            persistDetailCache();
+            if (typeof onArrived === "function") onArrived(key);
+          }
+        })
+        .catch(function () { detailInflight.delete(key); });
+      detailInflight.set(key, p);
+    }
+
+    // ---- Standard sub-agent model (the card's checkbox) ----
+    // One global toggle, owned by the host: every FUTURE subagent child runs
+    // with this route::model regardless of the parent session's model. State
+    // lives in the DSH settings document (namespace "model-garden"), read
+    // lazily once per page (setTip refreshes it when the card opens).
+    let subagentState = { loaded: false, loading: false, subagentModel: null };
+    const subagentStateWaiters = new Set();
+    function subagentActive() {
+      return subagentState.subagentModel !== null && typeof subagentState.subagentModel === "object"
+        ? subagentState.subagentModel
+        : null;
+    }
+    function notifySubagentWaiters() {
+      for (const w of subagentStateWaiters) w();
+      subagentStateWaiters.clear();
+    }
+    function fetchSubagentState(onDone) {
+      if (subagentState.loading) return;
+      subagentState.loading = true;
+      globalThis.fetch("/model-garden/subagent-model")
+        .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+        .then(function (d) {
+          subagentState = { loaded: true, loading: false, subagentModel: (d && typeof d === "object" && d.subagentModel !== undefined) ? d.subagentModel : null };
+          notifySubagentWaiters();
+          if (typeof onDone === "function") onDone();
+        })
+        .catch(function () {
+          subagentState = { loaded: false, loading: false, subagentModel: null };
+          notifySubagentWaiters();
+          if (typeof onDone === "function") onDone();
+        });
+    }
+    // Ensure the state was read at least once; fires fn on this tick or after
+    // the fetch, so the checkbox shows the truth as soon as it exists.
+    function ensureSubagentState(fn) {
+      if (subagentState.loaded || subagentState.loading) { if (typeof fn === "function") fn(); return; }
+      fetchSubagentState(fn);
+    }
+    function setSubagentState(subagentModel) {
+      subagentState = { loaded: true, loading: false, subagentModel: subagentModel || null };
+      notifySubagentWaiters();
+    }
+    // POST the toggle; `null` clears. Host validates + persists in settings;
+    // resolves with the response or throws a readable Error.
+    function postSubagentModel(selection) {
+      const body = selection === null ? {} : { provider: selection.provider, model: selection.model,
+        ...(selection.reasoningEffort !== undefined ? { reasoningEffort: selection.reasoningEffort } : {}) };
+      return globalThis.fetch("/model-garden/subagent-model", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (r) { return r.json().catch(function () { return { error: "HTTP " + r.status }; }); })
+        .then(function (d) {
+          if (d && typeof d === "object" && d.subagentModel !== undefined) {
+            setSubagentState(d.subagentModel);
+            return d;
+          }
+          throw new Error(d && d.error ? String(d.error) : "unexpected response");
+        });
     }
 
     // Provider routes hidden from the picker: the vision toolkit mirrors every
@@ -610,14 +917,26 @@ window.__ModuleLoader__.load({
           // the picker is mounted, so newly added/removed providers + models
           // show up without reopening the panel. Skipped while the tab is
           // hidden. The store subscription above picks up the fresh snapshot.
+          //
+          // `props.load` is a NEW arrow function on every host render (the
+          // slot is re-rendered on every composer render, and the cost poll
+          // re-renders this component every 1.5 s). Listing it in the deps
+          // therefore tore the interval down and rebuilt it roughly every
+          // 1.5 s, so MODEL_LIST_REFRESH_MS could never elapse and the
+          // documented auto-update simply never fired. Read it through a ref
+          // instead — the interval's lifetime must depend on availability
+          // only, not on an identity that changes on every render.
+          const loadRef = React.useRef(props.load);
+          loadRef.current = props.load;
           React.useEffect(() => {
-            if (!(props.available && props.load)) return;
+            if (!props.available) return;
             const id = globalThis.setInterval(() => {
               if (globalThis.document && globalThis.document.hidden) return;
-              props.load();
+              const fn = loadRef.current;
+              if (typeof fn === "function") fn();
             }, MODEL_LIST_REFRESH_MS);
             return () => globalThis.clearInterval(id);
-          }, [props.available, props.load]);
+          }, [props.available]);
 
           const [open, setOpen] = React.useState(false);
           const [query, setQuery] = React.useState("");
@@ -693,6 +1012,10 @@ window.__ModuleLoader__.load({
                 // directory + live inventory see the freshly written lists
                 if (props.available && props.load) props.load();
                 fetchServerModels();
+                // The host invalidated its catalog together with the write, so
+                // re-read it: a just-added model otherwise keeps showing no
+                // context window until a full page reload.
+                fetchCatalog(true).then(function () { setUiTick(function (t) { return t + 1; }); });
               })
               .catch(function (err) {
                 setRefreshResult({ error: String(err && err.message ? err.message : err) });
@@ -712,6 +1035,15 @@ window.__ModuleLoader__.load({
           // Effort dropdown (styled like the model picker) next to the model
           // name in the chat composer.
           const [effortOpen, setEffortOpen] = React.useState(false);
+          // Sub-agent default toggle (checkbox inside the hover detail card):
+          // one POST per change, local busy/error state, host-driven truth.
+          const [subagentBusy, setSubagentBusy] = React.useState(false);
+          const [subagentErr, setSubagentErr] = React.useState(null);
+          // Keyboard cursor: index into `navRows` (the FLAT list of rows the
+          // user can actually see — collapsed providers are skipped). -1 means
+          // "no row highlighted yet", so the first ArrowDown lands on the top
+          // row instead of jumping past it.
+          const [activeIdx, setActiveIdx] = React.useState(-1);
 
           const locked = props.locked === true || props.available === false;
           const groups = state === null || state.groups === undefined ? [] : state.groups;
@@ -749,7 +1081,28 @@ window.__ModuleLoader__.load({
             return null;
           }
           const curModelObj = findCurrentModel();
-          const currentEfforts = (curModelObj && curModelObj.reasoning && curModelObj.reasoning.efforts) || [];
+          // Normalize the effort list once, here. The adapter may legitimately
+          // send either `[{ id, name }]` or a bare `["low", "high"]`, and a
+          // malformed/empty value must not crash the whole composer render:
+          // without the Array.isArray guard a non-array threw on `.map` below,
+          // and a string list produced `v = "undefined"` — a blank label that
+          // sent `reasoningEffort: "undefined"` to the host.
+          const currentEfforts = (function () {
+            const raw = curModelObj && curModelObj.reasoning && curModelObj.reasoning.efforts;
+            if (!Array.isArray(raw)) return [];
+            const out = [];
+            for (const e of raw) {
+              if (typeof e === "string" || typeof e === "number") {
+                out.push({ id: String(e), name: String(e) });
+              } else if (e && typeof e === "object") {
+                const id = e.id !== undefined && e.id !== null ? String(e.id)
+                  : (e.name !== undefined && e.name !== null ? String(e.name) : "");
+                if (id === "") continue;
+                out.push({ id: id, name: e.name !== undefined && e.name !== null ? String(e.name) : id });
+              }
+            }
+            return out;
+          })();
           const currentEffort = (function () {
             if (current !== null && current.reasoningEffort !== undefined) return String(current.reasoningEffort);
             // No explicit effort on the selection yet → mirror what picking this
@@ -762,16 +1115,37 @@ window.__ModuleLoader__.load({
 
           // Live API inventory of local gateways: providerId -> Set(live model ids).
           // Empty when no gateway data (remote/cloud providers or offline).
+          //
+          // A provider whose probe FAILED or returned an empty list still gets
+          // an entry (an empty Set). Previously only non-empty results were
+          // recorded, so an unreachable gateway was indistinguishable from
+          // "unknown" and the "Live" filter silently kept every configured
+          // model — it looked like it worked while doing nothing.
           const liveMap = (function () {
             const out = {};
             if (serverModels === null || !serverModels.providers) return out;
             for (const pid of Object.keys(serverModels.providers)) {
               const info = serverModels.providers[pid];
-              if (info && Array.isArray(info.models) && info.models.length > 0) {
-                out[String(pid)] = new Set(info.models.map(String));
-              }
+              if (!info) continue;
+              out[String(pid)] = (Array.isArray(info.models) && info.models.length > 0)
+                ? new Set(info.models.map(String))
+                : new Set();
             }
             return out;
+          })();
+          // Gateways the host could not enumerate — the reason the "Live"
+          // filter may be hiding more than expected.
+          const liveWarn = (function () {
+            const bad = [];
+            if (serverModels === null || !serverModels.providers) return bad;
+            for (const pid of Object.keys(serverModels.providers)) {
+              const info = serverModels.providers[pid];
+              if (info && (info.error || !Array.isArray(info.models) || info.models.length === 0)) {
+                bad.push((info && info.warning ? info.warning + " · " : "") +
+                  (info && info.error ? info.error : "no models reported"));
+              }
+            }
+            return bad;
           })();
 
           // Filter once (search + favorites + live + hidden), then group or sort.
@@ -786,8 +1160,15 @@ window.__ModuleLoader__.load({
             for (const m of g.models) {
               // User-blacklisted model (✕ in its row / hidden-settings).
               if (isHiddenModel(g.id, m.id)) continue;
-              const text = (m.name || m.id || "") + " " + (m.description || "");
-              if (q !== "" && text.toLowerCase().indexOf(q) === -1) continue;
+              // Search covers the model name, its id and the description, PLUS
+              // the provider's display name and id — with 6 providers and 100+
+              // models, typing "byteplus" or "DeepSeek" should surface that
+              // provider's models even when the word is in no model name.
+              if (q !== "") {
+                const text = (m.name || "") + " " + (m.id || "") + " " +
+                  (m.description || "") + " " + (g.name || "") + " " + g.id;
+                if (text.toLowerCase().indexOf(q) === -1) continue;
+              }
               if (favOnly && !hasFav(g.id, m.id)) continue;
               if (localOnly && !localFor(g.id, m.id)) continue;
               // "Live" toggle: for providers with live inventory (local
@@ -829,13 +1210,142 @@ window.__ModuleLoader__.load({
             }
           }
 
+          // Recent models that are actually in the current result set. Rendered
+          // as a chip strip, never as rows: as rows every recent model appeared
+          // twice in one view (here and again under its provider). Suppressed
+          // while searching or filtering — the narrowed result IS the answer —
+          // and while sorted, where a flat ranked table has no place for a
+          // pinned shortcut block.
+          const recentVisible = (function () {
+            if (sortKey !== null || q !== "" || favOnly || localOnly || liveOnly) return [];
+            return recentRows(groups);
+          })();
+
+          // Flat list of every row the user can currently see and therefore
+          // arrow through: the pinned recent rows first, then the sort view
+          // (already flat) or the models of OPEN provider groups — a collapsed
+          // group's rows are not in the DOM, so they must not be reachable by
+          // keyboard either.
+          // (Recent models are NOT rows: they render as chips in their own
+          // strip above the list, so they must not enter the arrow-key order.)
+          const navRows = [];
+          if (sortKey !== null) {
+            for (const c of filtered) navRows.push(c);
+          } else {
+            for (const grp of grouped) {
+              if (isCollapsed(grp.g.id)) continue;
+              for (const m of grp.models) navRows.push({ g: grp.g, m });
+            }
+          }
+          // Keyed index into `navRows`, so the grouped renderer can stamp the
+          // right cursor position onto each row WITHOUT counting by hand
+          // (which would drift as soon as an earlier group is collapsed).
+          // Keys are unique: one model id per provider.
+          const navIndexOf = new Map();
+          for (let i = 0; i < navRows.length; i++) {
+            navIndexOf.set(navRows[i].g.id + "::" + navRows[i].m.id, i);
+          }
+
+          // Reset the keyboard cursor whenever the visible row set changes
+          // (new search text, a filter toggle, a sort flip) — a stale index
+          // would otherwise point at a different model or past the end.
+          const navSig = navRows.length + ":" + q + ":" + sortKey + ":" + sortDir +
+            ":" + favOnly + ":" + localOnly + ":" + liveOnly;
+          const navSigRef = React.useRef(navSig);
+          if (navSigRef.current !== navSig) {
+            navSigRef.current = navSig;
+            if (activeIdx !== -1) setActiveIdx(-1);
+          }
+
+          // Keyboard selection: ↑/↓ move, Home/End jump, Enter picks.
+          //
+          // Scoped to the PANEL via onKeyDown (events from the search input
+          // bubble up to it) — NOT bound to the document. A document-level
+          // handler preventDefaults these keys page-wide, so with the panel
+          // open Home/End stopped moving the caret in the composer textarea
+          // and Enter picked a model instead of sending the message.
+          const navRowsRef = React.useRef(navRows);
+          navRowsRef.current = navRows;
+          const pickRef = React.useRef(null);
+          // Unique per mounted picker: the host renders this slot more than
+          // once (main composer + subagent composer), so shared ids would
+          // collide and aria-activedescendant would resolve to the wrong row.
+          const idPrefix = React.useId();
+          const panelRef = React.useRef(null);
+
+          function onPanelKeyDown(e) {
+            if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+            const rows = navRowsRef.current;
+            const key = e.key;
+            const isDown = key === "ArrowDown";
+            const isUp = key === "ArrowUp";
+            if (!isDown && !isUp && key !== "Home" && key !== "End" && key !== "Enter") return;
+            if (rows.length === 0 && key !== "Enter") return;
+            if (isDown || isUp || key === "Home" || key === "End") {
+              // Home/End keep their native meaning when the caret is inside the
+              // search field: they should jump the text, not the list. Arrows
+              // are always ours, since the field is single-line.
+              const t = e.target;
+              const inSearch = t && t.tagName === "INPUT";
+              if (inSearch && (key === "Home" || key === "End")) return;
+              e.preventDefault();
+              setActiveIdx((prev) => {
+                if (key === "Home") return 0;
+                if (key === "End") return rows.length - 1;
+                // Wrap around: ↑ above the first row lands on the last one.
+                if (prev < 0) return isDown ? 0 : rows.length - 1;
+                const next = prev + (isDown ? 1 : -1);
+                if (next < 0) return rows.length - 1;
+                if (next >= rows.length) return 0;
+                return next;
+              });
+              return;
+            }
+            // Enter — only act on a highlighted row, so Enter in an empty
+            // search field is left alone.
+            if (key === "Enter" && pickRef.current !== null) {
+              const row = rows[activeIdx];
+              if (row) {
+                e.preventDefault();
+                pickRef.current(row.g, row.m);
+              }
+            }
+          }
+
+          // Keep the highlighted row visible while arrowing through a long
+          // list, and mirror the hover tooltip onto it so the keyboard user
+          // sees the same detail card a mouse user gets. Queries go through
+          // panelRef, never the document: with two pickers mounted, a
+          // document-wide lookup would scroll the OTHER session's panel.
+          React.useEffect(() => {
+            if (!open || activeIdx < 0) return;
+            const panel = panelRef.current;
+            if (!panel) return;
+            const el = panel.querySelector('[data-mg-row="' + activeIdx + '"]');
+            if (el && typeof el.scrollIntoView === "function") {
+              el.scrollIntoView({ block: "nearest" });
+            }
+            const row = navRowsRef.current[activeIdx];
+            if (!row) return;
+            setTip((prev) => {
+              if (prev && prev.m === row.m && prev.g === row.g) return prev;
+              const r = panel.getBoundingClientRect();
+              return { g: row.g, m: row.m, side: "left", top: r.top + 8,
+                       panelLeft: r.left, panelRight: r.right, maxW: Math.max(160, r.left - 16) };
+            });
+            // The mirrored card carries the SAME enrichment as the hovered one.
+            cancelTipClose();
+            ensureDetail(row.g.id, row.m.id, () => setUiTick((t) => t + 1));
+            ensureSubagentState(() => setUiTick((t) => t + 1));
+          }, [open, activeIdx]);
+
           React.useEffect(() => {
             if (!open && !effortOpen) return;
             function onKey(e) {
               if (e.key !== "Escape") return;
               if (hideOpen) setHideOpen(false);
               else if (effortOpen) setEffortOpen(false);
-              else { setOpen(false); setTip(null); }
+              else { closePanel(); }
             }
             const d = globalThis.document;
             d.addEventListener("keydown", onKey);
@@ -962,11 +1472,32 @@ window.__ModuleLoader__.load({
             };
           }
 
+          // Closing the panel unmounts its auto-focused search input, so DOM
+          // focus falls back to <body> and the next Tab restarts from the top
+          // of the document. Hand focus back to the trigger, as the native
+          // picker does, so keyboard use continues where it left off.
+          const triggerRef = React.useRef(null);
+          function closePanel(restoreFocus) {
+            setOpen(false);
+            setHideOpen(false);
+            cancelTipClose();
+            setTip(null);
+            setActiveIdx(-1);
+            if (restoreFocus === false) return;
+            // After the panel has actually unmounted.
+            if (typeof queueMicrotask === "function") {
+              queueMicrotask(function () {
+                const t = triggerRef.current;
+                if (t && typeof t.focus === "function") t.focus();
+              });
+            }
+          }
           function toggleOpen() {
             if (locked) return;
             setSelectError(null);
-            if (open) { setOpen(false); setHideOpen(false); setTip(null); return; }
+            if (open) { closePanel(); return; }
             setOpen(true); setQuery(""); setHideOpen(false); setTip(null); setEffortOpen(false);
+            setActiveIdx(-1);
           }
           // Table-header click: asc → desc → off (back to provider groups).
           function toggleSort(key) {
@@ -974,11 +1505,60 @@ window.__ModuleLoader__.load({
             if (sortDir === "asc") { setSortDir("desc"); return; }
             setSortKey(null);
           }
+          // Keep the keyboard handler's view of `pick` current without making
+          // the document-level listener depend on it every render.
+          pickRef.current = pick;
+          // The ★ / ✕ controls live inside the row's own <button>. A nested
+          // <button> is invalid HTML, and a plain span with role="button" is
+          // not focusable — so favorites and hide-from-list were reachable
+          // with a mouse only. Keep them spans (valid inside the row button),
+          // but make them real controls: focusable, announced as buttons, and
+          // activated by Enter/Space as well as by click.
+          function chipKey(e, fn) {
+            if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+            e.preventDefault();
+            e.stopPropagation();
+            fn();
+          }
+          // In-flight switch guard: the native picker disables its options
+          // while a select is pending. Without it, two rapid clicks (or Enter
+          // followed by a click) issue two select() calls and whichever
+          // resolves first closes the panel — so the model that actually takes
+          // effect could be the other one.
+          const selectingRef = React.useRef(false);
+          // Toggle the checked model as THE model every future subagent runs
+          // with (host-validated, persisted in the settings document). `next`
+          // = on/off; off POSTs an empty body, which clears the override.
+          function toggleSubagentDefault(g, m, next) {
+            if (subagentBusy) return;
+            setSubagentErr(null);
+            setSubagentBusy(true);
+            postSubagentModel(next ? { provider: g.id, model: m.id } : null)
+              .then(function (d) {
+                setSubagentBusy(false);
+                if (d && d.persisted === false) {
+                  setSubagentErr("Saved for this session only — the settings service did not accept persistence.");
+                }
+                setUiTick((t) => t + 1);
+              })
+              .catch(function (err) {
+                setSubagentBusy(false);
+                setSubagentErr("Could not save sub-agent model: " + (err && err.message ? err.message : String(err)));
+                setUiTick((t) => t + 1);
+              });
+          }
           function pick(g, m) {
+            if (selectingRef.current) return;
+            setActiveIdx(-1);
+            // Record the choice for the "Recent" group. Done here (at the
+            // point of intent) rather than on success, so the list reflects
+            // what the user is actually using even if the host rejects a
+            // switch — which is a transient, retryable condition.
+            noteRecent(g.id, m.id);
             const sel = { provider: g.id, model: m.id };
             const eff = startEffort(m);
             if (eff !== "") sel.reasoningEffort = eff;
-            const done = () => { setSelectError(null); setOpen(false); setTip(null); };
+            const done = () => { setSelectError(null); closePanel(); };
             if (typeof props.select !== "function") { done(); return; }
             let out;
             try {
@@ -988,15 +1568,19 @@ window.__ModuleLoader__.load({
               return;
             }
             if (!out || typeof out.then !== "function") { done(); return; }
+            selectingRef.current = true;
+            const release = function () { selectingRef.current = false; };
             // A rejected switch must stay visible: keep the panel open and say
             // why — the native picker keeps its menu open the same way.
             out.then(function (ok) {
+              release();
               if (ok === false) {
                 setSelectError("Could not switch to " + String(m.id) + " — the host rejected the selection.");
                 return;
               }
               done();
             }, function (error) {
+              release();
               setSelectError("Could not switch model: " + (error && error.message ? error.message : String(error)));
             });
           }
@@ -1005,9 +1589,29 @@ window.__ModuleLoader__.load({
           // effort. Opening one picker always closes the other.
           function pickChatEffort(value) {
             if (current === null || typeof props.select !== "function") return;
-            props
-              .select({ provider: current.provider, model: current.model, reasoningEffort: value })
-              .then(function () { setUiTick((t) => t + 1); }, function () {});
+            // Mirror pick(): a rejected switch must stay visible, not look like
+            // a success. The old empty rejection handler closed the menu and
+            // reported nothing at all.
+            setSelectError(null);
+            let out;
+            try {
+              out = props.select({
+                provider: current.provider, model: current.model, reasoningEffort: value
+              });
+            } catch (error) {
+              setSelectError("Could not set effort: " + (error && error.message ? error.message : String(error)));
+              return;
+            }
+            if (!out || typeof out.then !== "function") { setUiTick((t) => t + 1); return; }
+            out.then(function (ok) {
+              if (ok === false) {
+                setSelectError("Could not set effort to " + value + " — the host rejected it.");
+                return;
+              }
+              setUiTick((t) => t + 1);
+            }, function (error) {
+              setSelectError("Could not set effort: " + (error && error.message ? error.message : String(error)));
+            });
           }
           // Tooltip opens BESIDE the panel, its RIGHT edge always flush
           // against the panel's LEFT edge (anchored via style.right, so any
@@ -1027,17 +1631,47 @@ window.__ModuleLoader__.load({
             const roomLeft = pr.left - 8; // keep an 8px viewport margin
             const side = roomLeft >= 180 ? "left" : "right";
             const maxW = side === "left" ? Math.min(320, Math.floor(roomLeft)) : 320;
+            // The detail card is INTERACTIVE (subagent checkbox) — closing is
+            // delayed so the pointer can travel into the card, like the cost
+            // popup. A cancel/schedule pair per open tip.
+            cancelTipClose();
             setTip({ g, m, panelLeft: pr.left, panelRight: pr.right, side, top, maxW });
+            ensureDetail(g.id, m.id, () => setUiTick((t) => t + 1));
+            ensureSubagentState(() => setUiTick((t) => t + 1));
           }
+          // Handoff timers for hovering from a row INTO the detail card. NULL
+          // timer = the pointer went elsewhere (keyboard nav mirrors hover
+          // without timers, so an immediately-replaced tip stays in place).
+          const tipCloseTimer = React.useRef(null);
+          function cancelTipClose() {
+            if (tipCloseTimer.current === null) return;
+            globalThis.clearTimeout(tipCloseTimer.current);
+            tipCloseTimer.current = null;
+          }
+          function scheduleTipClose() {
+            cancelTipClose();
+            tipCloseTimer.current = globalThis.setTimeout(() => {
+              tipCloseTimer.current = null;
+              setTip(null);
+            }, 180);
+          }
+          React.useEffect(() => () => {
+            if (tipCloseTimer.current === null) return;
+            globalThis.clearTimeout(tipCloseTimer.current);
+          }, []);
           function hideTip() {
+            cancelTipClose();
             setTip(null);
+          }
+          function scheduleHideTip() {
+            scheduleTipClose();
           }
 
           function sortIndicator(key) {
             if (sortKey !== key) return null;
             return React.createElement("span", { className: "mg-ind" }, sortDir === "asc" ? "▲" : "▼");
           }
-          function renderRow(g, m, showProvider) {
+          function renderRow(g, m, showProvider, navIndex) {
             const isCurrent = current !== null && g.id === current.provider && m.id === current.model;
             const fav = hasFav(g.id, m.id);
             const entry = priceFor(g.id, m.id);
@@ -1045,15 +1679,25 @@ window.__ModuleLoader__.load({
               : (subscriptionFor(g.id, m.id) ? "sub" : "");
             const cw = contextFor(g.id, m.id);
             const ctxt = cw === null ? "" : formatTokens(cw);
+            const isActive = navIndex !== undefined && navIndex === activeIdx;
             return React.createElement("button", {
               type: "button",
               key: "m:" + g.id + ":" + m.id,
-              className: "mg-model",
+              className: "mg-model" + (isActive ? " active" : ""),
               role: "option",
               "aria-selected": isCurrent,
+              ...(navIndex === undefined ? null : { "data-mg-row": navIndex, id: idPrefix + "-opt-" + navIndex }),
               onClick: () => pick(g, m),
-              onMouseEnter: (e) => showTip(e, g, m),
-              onMouseLeave: hideTip,
+              // Hover and the keyboard cursor are the SAME cursor: moving the
+              // pointer over a row moves the active index, so the highlight can
+              // never sit on one row while the tooltip describes another.
+              onMouseEnter: (e) => {
+                if (navIndex !== undefined && navIndex !== activeIdx) setActiveIdx(navIndex);
+                showTip(e, g, m);
+              },
+              // The card reads on (interactive checkbox): leaving a row only
+              // schedules the close, so the pointer can travel into it.
+              onMouseLeave: scheduleHideTip,
             },
               React.createElement("span", { className: "mg-check" }, isCurrent ? "✓" : ""),
               React.createElement("span", { className: "mg-name" },
@@ -1065,16 +1709,20 @@ window.__ModuleLoader__.load({
               React.createElement("span", {
                 className: "mg-star" + (fav ? " on" : ""),
                 role: "button",
+                tabIndex: 0,
                 "aria-label": fav ? "Remove favorite" : "Add to favorites",
                 title: fav ? "Remove favorite" : "Add to favorites",
                 onClick: (e) => { e.stopPropagation(); toggleFav(g.id, m.id); setUiTick((t) => t + 1); },
+                onKeyDown: (e) => chipKey(e, () => { toggleFav(g.id, m.id); setUiTick((t) => t + 1); }),
               }, fav ? "★" : "☆"),
               React.createElement("span", {
                 className: "mg-hide",
                 role: "button",
+                tabIndex: 0,
                 "aria-label": "Hide " + (m.name || m.id) + " from the list",
                 title: "Hide this model from the list (manage hidden in ⚙)",
                 onClick: (e) => { e.stopPropagation(); toggleHiddenModel(g.id, m.id); setUiTick((t) => t + 1); },
+                onKeyDown: (e) => chipKey(e, () => { toggleHiddenModel(g.id, m.id); setUiTick((t) => t + 1); }),
               }, "✕")
             );
           }
@@ -1084,6 +1732,7 @@ window.__ModuleLoader__.load({
               React.createElement("button", {
                 type: "button",
                 className: "mg-trigger" + (locked ? " locked" : ""),
+                ref: triggerRef,
                 title: currentLabel === null ? "Select model" : "Model: " + currentLabel,
                 onClick: toggleOpen,
                 disabled: locked,
@@ -1103,7 +1752,7 @@ window.__ModuleLoader__.load({
                   className: "mg-trigger mg-effort-trigger",
                   title: "Reasoning effort: " + currentEffort,
                   // Opening one picker always closes the other.
-                  onClick: () => { setOpen(false); setTip(null); setEffortOpen(!effortOpen); },
+                  onClick: () => { closePanel(false); setEffortOpen(!effortOpen); },
                   "aria-haspopup": "listbox",
                   "aria-expanded": effortOpen,
                 },
@@ -1127,6 +1776,8 @@ window.__ModuleLoader__.load({
                       className: "mg-effort-item" + (active ? " active" : ""),
                       role: "option",
                       "aria-selected": active,
+                      // Closes optimistically; pickChatEffort reopens on a reported failure
+                      // via the error strip, so a rejection is never silent.
                       onClick: () => { pickChatEffort(v); setEffortOpen(false); },
                     },
                       React.createElement("span", { className: "mg-effort-item-name" }, ef.name || ef.id),
@@ -1140,14 +1791,31 @@ window.__ModuleLoader__.load({
               type: "button",
               className: "mg-backdrop",
               "aria-label": "Close model picker",
-              onClick: () => { setOpen(false); setTip(null); },
+              onClick: () => { closePanel(); },
             }),
-            open && !locked && React.createElement("div", { className: "mg-panel", role: "listbox" },
+            open && !locked && React.createElement("div", {
+              className: "mg-panel",
+              ref: panelRef,
+              role: "listbox",
+              "aria-label": "Available models",
+              "aria-busy": status === "loading" ? true : undefined,
+              onKeyDown: onPanelKeyDown,
+            },
               React.createElement("div", { className: "mg-search" },
                 React.createElement("input", {
                   type: "text",
                   placeholder: "Search models…",
                   "aria-label": "Search models",
+                  // The combobox semantics live HERE, on the element that
+                  // actually holds DOM focus. aria-activedescendant only
+                  // takes effect on the focused node, so putting it on the
+                  // listbox (as before) meant the keyboard cursor was never
+                  // announced at all.
+                  role: "combobox",
+                  "aria-expanded": true,
+                  "aria-controls": idPrefix + "-list",
+                  "aria-autocomplete": "list",
+                  "aria-activedescendant": activeIdx >= 0 ? idPrefix + "-opt-" + activeIdx : undefined,
                   value: query,
                   autoFocus: true,
                   onChange: (e) => setQuery(e.target.value),
@@ -1173,14 +1841,14 @@ window.__ModuleLoader__.load({
                   className: "mg-local mg-refresh" + (refreshBusy ? " on" : ""),
                   onClick: () => { if (!refreshBusy) runRefreshModels(); },
                   disabled: refreshBusy,
-                  title: "Alle Modelllisten aus den Provider-APIs aktualisieren (schreibt in die llm-pi-ai-Konfiguration zurück)",
+                  title: "Re-sync every provider model list from its live API (writes back to the llm-pi-ai config)",
                 }, refreshBusy ? "⟳ …" : "⟳"),
                 React.createElement("button", {
                   type: "button",
                   className: "mg-local" + (hideOpen ? " on" : ""),
                   onClick: () => setHideOpen(!hideOpen),
                   "aria-pressed": hideOpen,
-                  title: "Ausgeblendete Modelle & Anbieter verwalten (Liste verkleinern)",
+                  title: "Manage hidden models & providers (shrink the list)",
                 }, "⚙")
               ),
               // Hidden-settings popup: every blacklisted provider and model
@@ -1219,6 +1887,36 @@ window.__ModuleLoader__.load({
                     }, "show")
                   );
                 });
+                // Active sub-agent default, so the setting stays discoverable
+                // outside the hover card: which route::model is forced, or the
+                // inherit note. Clearing goes through the same POST channel.
+                const active = subagentActive();
+                ensureSubagentState(() => setUiTick((t) => t + 1));
+                const subagentRow = active !== null
+                  ? React.createElement("div", { key: "sa", className: "mg-hideitem" },
+                      React.createElement("span", { className: "mg-hideitem-prov" }, "sub-agents → " + (provNames[active.provider] || active.provider) + " · " + active.model),
+                      React.createElement("button", {
+                        type: "button",
+                        className: "mg-hideitem-show",
+                        onClick: () => {
+                          if (subagentBusy) return;
+                          setSubagentErr(null);
+                          setSubagentBusy(true);
+                          postSubagentModel(null)
+                            .then(function () { setSubagentBusy(false); setUiTick((t) => t + 1); })
+                            .catch(function (e2) {
+                              setSubagentBusy(false);
+                              setSubagentErr(e2 && e2.message ? e2.message : String(e2));
+                              setUiTick((t) => t + 1);
+                            });
+                        },
+                        title: "Back to inherit: subagents run the parent session's model again",
+                      }, subagentBusy ? "…" : "clear")
+                    )
+                  : React.createElement("div", { key: "sa", className: "mg-hideitem" },
+                      React.createElement("span", { className: "mg-hideitem-prov" }, "sub-agents"),
+                      React.createElement("span", { className: "mg-hideitem-name" }, "inherit the session's model (set via hover in the list)")
+                    );
                 return React.createElement("div", { className: "mg-hidepanel", role: "dialog", "aria-label": "Hidden models and providers" },
                   React.createElement("div", { className: "mg-hidepanel-title" },
                     React.createElement("span", null, "Hidden from list"),
@@ -1230,6 +1928,9 @@ window.__ModuleLoader__.load({
                     }, "show all")
                   ),
                   React.createElement("div", { className: "mg-hidepanel-scroll" },
+                    React.createElement("div", { className: "mg-hidepanel-sect" }, "Sub-agent model"),
+                    subagentRow,
+                    subagentErr && React.createElement("div", { className: "mg-hidepanel-empty", style: { color: "var(--dsw-alias-state-error-primary)" } }, subagentErr),
                     React.createElement("div", { className: "mg-hidepanel-sect" }, "Providers"),
                     provRows.length > 0 ? provRows : React.createElement("div", { className: "mg-hidepanel-empty" }, "none hidden"),
                     React.createElement("div", { className: "mg-hidepanel-sect" }, "Models"),
@@ -1237,37 +1938,29 @@ window.__ModuleLoader__.load({
                   )
                 );
               })(),
-              React.createElement("div", { className: "mg-thead" },
-                React.createElement("span", null, ""),
-                React.createElement("button", {
-                  type: "button",
-                  className: "mg-th" + (sortKey === "name" ? " active" : ""),
-                  onClick: () => toggleSort("name"),
-                  title: "Sort by name (click again to reverse, third click: provider groups)",
-                }, "Name", sortIndicator("name")),
-                React.createElement("button", {
-                  type: "button",
-                  className: "mg-th ctx" + (sortKey === "context" ? " active" : ""),
-                  onClick: () => toggleSort("context"),
-                  title: "Sort by context window (click again to reverse, third click: provider groups)",
-                }, "Ctx", sortIndicator("context")),
-                React.createElement("button", {
-                  type: "button",
-                  className: "mg-th price" + (sortKey === "price" ? " active" : ""),
-                  onClick: () => toggleSort("price"),
-                  title: "Sort by price per 1M input tokens (click again to reverse, third click: provider groups)",
-                }, "Price", sortIndicator("price")),
-                React.createElement("button", {
-                  type: "button",
-                  className: "mg-th star" + (favOnly ? " active" : ""),
-                  onClick: () => setFavOnly(!favOnly),
-                  "aria-pressed": favOnly,
-                  title: favOnly ? "Show all models" : "Show favorites only",
-                }, favOnly ? "★" : "☆")
-              ),
+
               status === "loading" && React.createElement("div", { className: "mg-status" }, "Loading…"),
-              err && React.createElement("div", { className: "mg-error" }, err),
-              selectError && React.createElement("div", { className: "mg-error" }, selectError),
+              // Directory error: a dead end that told the user to reload the
+              // plugin but offered no way to do it. The native error strip
+              // carries a Retry on the right — same geometry, same affordance.
+              err && React.createElement("div", { className: "mg-error" },
+                React.createElement("span", null, err),
+                React.createElement("button", {
+                  type: "button",
+                  className: "mg-retry",
+                  onClick: () => { if (props.available && props.load) props.load(); },
+                  title: "Try loading the model list again",
+                }, "Retry")
+              ),
+              selectError && React.createElement("div", { className: "mg-error" },
+                React.createElement("span", null, selectError),
+                React.createElement("button", {
+                  type: "button",
+                  className: "mg-retry",
+                  onClick: () => setSelectError(null),
+                  title: "Dismiss",
+                }, "Dismiss")
+              ),
               (function () {
                 const cc = currentCost();
                 if (!cc || histErr) {
@@ -1298,6 +1991,22 @@ window.__ModuleLoader__.load({
                     )
                   );
                 }
+                if (liveOnly && liveWarn.length > 0) {
+                  return React.createElement("div", null,
+                    React.createElement("div", { className: "mg-warn" },
+                      liveWarn.length + " gateway" + (liveWarn.length === 1 ? "" : "s") +
+                      " could not be listed — its configured models are hidden: " + liveWarn.join("; ")
+                    ),
+                    React.createElement("div", { className: "mg-cost" },
+                      React.createElement("span", null,
+                        React.createElement("span",
+                          Object.assign({ className: "mg-costbtn", title: "Hover: session cost breakdown" }, costHoverProps),
+                          line),
+                        React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
+                      )
+                    )
+                  );
+                }
                 const line = "approx cost: " + formatMoney(cc.total);
                 // The breakdown popup opens ONLY when hovering the cost
                 // figure itself — not the token detail or model label.
@@ -1315,17 +2024,69 @@ window.__ModuleLoader__.load({
                   : favOnly ? "No favorites yet — star a model"
                   : localOnly ? "No local models (all models have an API price)"
                   : (q === "" && hiddenCount() > 0 ? "All visible models hidden — open ⚙ to restore" : "No matching models")),
+              // Recent shortcuts. Rendered as chips rather than rows: as rows
+              // each recent model was printed twice — once here and again
+              // under its provider further down the same view.
+              recentVisible.length > 0 && React.createElement("div", {
+                className: "mg-recent",
+                role: "group",
+                "aria-label": "Recently used models",
+              }, recentVisible.map(function (r) {
+                const isCur = current !== null
+                  && current.provider === r.g.id && current.model === r.m.id;
+                return React.createElement("button", {
+                  key: "rc:" + r.g.id + "::" + r.m.id,
+                  type: "button",
+                  className: "mg-recent-chip" + (isCur ? " on" : ""),
+                  title: r.g.name + " · " + (r.m.name || r.m.id),
+                  onClick: () => pick(r.g, r.m),
+                }, isCur ? "✓ " + (r.m.name || r.m.id) : (r.m.name || r.m.id));
+              })),
               React.createElement("div", { className: "mg-groups" },
+                React.createElement("div", { className: "mg-thead" },
+                  React.createElement("span", null, ""),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-th" + (sortKey === "name" ? " active" : ""),
+                    onClick: () => toggleSort("name"),
+                    title: "Sort by name (click again to reverse, third click: provider groups)",
+                  }, "Name", sortIndicator("name")),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-th ctx" + (sortKey === "context" ? " active" : ""),
+                    onClick: () => toggleSort("context"),
+                    title: "Sort by context window (click again to reverse, third click: provider groups)",
+                  }, "Ctx", sortIndicator("context")),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-th price" + (sortKey === "price" ? " active" : ""),
+                    onClick: () => toggleSort("price"),
+                    title: "Sort by price per 1M input tokens (click again to reverse, third click: provider groups)",
+                  }, "Price", sortIndicator("price")),
+                  React.createElement("button", {
+                    type: "button",
+                    className: "mg-th star" + (favOnly ? " active" : ""),
+                    onClick: () => setFavOnly(!favOnly),
+                    "aria-pressed": favOnly,
+                    title: favOnly ? "Show all models" : "Show favorites only",
+                  }, favOnly ? "★" : "☆")
+                ),
                 sortKey !== null
-                  // flat table view while a column sort is active
-                  ? filtered.map((c) => renderRow(c.g, c.m, true))
+                  // flat table view while a column sort is active — the nav
+                  // index is the position in the SAME array navRows was built
+                  // from, so arrow keys and the rendered order always agree.
+                  // (Recent is hidden in this view, so `filtered` and the tail
+                  // of navRows line up exactly.)
+                  ? filtered.map(function (c, i) {
+                      return renderRow(c.g, c.m, true, i);
+                    })
                   : grouped.map(function (grp) {
                     const closed = isCollapsed(grp.g.id);
                     return React.createElement("div", { key: "g:" + grp.g.id, className: "mg-group" },
                       React.createElement("button", {
                         type: "button",
                         className: "mg-grouphead" + (closed ? " closed" : ""),
-                        onClick: () => { toggleCollapsed(grp.g.id); setUiTick((t) => t + 1); },
+                        onClick: () => { toggleCollapsed(grp.g.id); setUiTick((t) => t + 1); setActiveIdx(-1); },
                         title: closed ? "Expand provider" : "Collapse provider",
                         "aria-expanded": !closed,
                       },
@@ -1335,25 +2096,35 @@ window.__ModuleLoader__.load({
                         React.createElement("span", {
                           className: "mg-hide",
                           role: "button",
+                          tabIndex: 0,
                           "aria-label": "Hide provider " + (grp.g.name || grp.g.id) + " entirely",
                           title: "Hide this whole provider (manage hidden in ⚙)",
-                          onClick: (e) => { e.stopPropagation(); toggleHiddenProvider(grp.g.id); setUiTick((t) => t + 1); },
+                          onClick: (e) => { e.stopPropagation(); toggleHiddenProvider(grp.g.id); setUiTick((t) => t + 1); setActiveIdx(-1); },
+                          onKeyDown: (e) => chipKey(e, () => { toggleHiddenProvider(grp.g.id); setUiTick((t) => t + 1); setActiveIdx(-1); }),
                         }, "✕")
                       ),
                       !closed && React.createElement("div", { className: "mg-groupbody" },
-                        grp.models.map((m) => renderRow(grp.g, m, false))
+                        grp.models.map((m) => renderRow(grp.g, m, false,
+                          navIndexOf.get(grp.g.id + "::" + m.id)))
                       )
                     );
                   })
               ),
-              React.createElement("div", { className: "mg-status", style: { display: "flex", justifyContent: "space-between" } },
-                React.createElement("span", { className: "mg-count" }, filtered.length + " models"),
+              React.createElement("div", { className: "mg-status", style: { display: "flex", justifyContent: "space-between", gap: "8px" } },
+                // While arrowing, the position replaces the plain count so the
+                // user can see where they are in a long list; without a cursor
+                // the count stands on its own.
+                React.createElement("span", { className: "mg-count" },
+                  activeIdx >= 0
+                    ? (activeIdx + 1) + " / " + navRows.length
+                    : navRows.length + (navRows.length === 1 ? " model" : " models") +
+                      (navRows.length !== filtered.length ? " (" + filtered.length + " match)" : "")),
                 React.createElement("span", {
                   className: "mg-count",
                   style: refreshResult && refreshResult.error ? { color: "var(--dsw-alias-state-warn-label, #d29922)" } : undefined,
                   title: refreshResult && Array.isArray(refreshResult.results)
                     ? refreshResult.results.map(function (r) {
-                        return r.id + ": " + r.total + " Modelle" +
+                        return r.id + ": " + r.total + " models" +
                           (r.added > 0 ? " +" + r.added : "") +
                           (r.removed > 0 ? " −" + r.removed : "") +
                           (r.error ? " — " + r.error : "");
@@ -1361,8 +2132,14 @@ window.__ModuleLoader__.load({
                     : undefined,
                 }, refreshResult
                   ? (refreshResult.error ? "⟳ " + refreshResult.error : "⟳ " + refreshResult.summary)
-                  : "prices: models.dev")
-              )
+                  : pricesLabel())
+              ),
+              // Advertise the keyboard controls — the arrows/Home/End/Enter
+              // handling is invisible otherwise, and the native menu offers no
+              // such hint either, so this is a small usability win rather than
+              // a parity change.
+              React.createElement("div", { className: "mg-hint" },
+                "↑↓ move · ↵ select · esc close")
             ),
             (function () {
               if (!tip || locked || !open) return null;
@@ -1375,41 +2152,167 @@ window.__ModuleLoader__.load({
                     maxWidth: tip.maxW, minWidth: Math.min(200, tip.maxW) }
                 : { left: Math.min(tip.panelRight + 1, Math.max(8, vw - 340)), top: tip.top,
                     maxWidth: tip.maxW };
-              const tipEl = React.createElement("div", {
+              // The card is interactive: pointer may travel into it (checkbox),
+              // so leaving a row schedules the close instead of doing it.
+              const tipHover = { onMouseEnter: () => cancelTipClose(), onMouseLeave: () => scheduleTipClose() };
+              // Detail enrichment: cached instantly; {}: route known but has no
+              // extra facts; null: still being fetched (latest pass renders).
+              const detail = cachedDetail(tip.g.id, tip.m.id);
+              const active = subagentActive();
+              const checked = active !== null
+                && String(active.provider) === String(tip.g.id)
+                && String(active.model) === String(tip.m.id);
+              // (non-reactive module flag; the tick re-render after the POST
+              // resolves refreshes the row meanwhile)
+              const busy = subagentBusy;
+              const facts = (function () {
+                const cells = [];
+                const num = function (n) { return typeof n === "number" && isFinite(n) ? n.toLocaleString() : "–"; };
+                function row(key, label, value) {
+                  if (value === undefined || value === null) return;
+                  cells.push(
+                    React.createElement("div", { key: key + "k", className: "mg-tt-skel" }, label),
+                    React.createElement("div", {
+                      key: key + "v", className: "mg-tt-val" +
+                        (key === "g" ? " mg-tt-code" : ""),
+                    }, value),
+                  );
+                }
+                function yesNo(v) { return v === true ? "Yes" : v === false ? "No" : undefined; }
+                // Context / max output / efforts — the ADAPTER's own numbers
+                // win over catalog guesses (detail.context already resolved it).
+                const ctxWin = contextFor(tip.g.id, tip.m.id);
+                if (ctxWin !== null) row("c", "Context", num(ctxWin));
+                const mo = maxOutputFor(tip.g.id, tip.m.id);
+                if (mo !== null) row("mo", "Max output", num(mo));
+                const ef = tip.m.reasoning && tip.m.reasoning.efforts;
+                if (Array.isArray(ef) && ef.length) {
+                  const names = ef.map(function (e) {
+                    if (typeof e === "string" || typeof e === "number") return String(e);
+                    if (e && typeof e === "object") {
+                      return String(e.name !== undefined && e.name !== null ? e.name
+                        : (e.id !== undefined && e.id !== null ? e.id : "?"));
+                    }
+                    return "?";
+                  });
+                  row("ef", "Efforts", names.join(", ") + (tip.m.reasoning && tip.m.reasoning.defaultEffort
+                    ? " (default: " + tip.m.reasoning.defaultEffort + ")" : ""));
+                }
+                const price = priceFor(tip.g.id, tip.m.id);
+                if (price) {
+                  const bits = [];
+                  if (typeof price.input === "number") bits.push("in $" + fmtMoneyShort(price.input));
+                  if (typeof price.output === "number") bits.push("out $" + fmtMoneyShort(price.output));
+                  if (typeof price.cacheRead === "number") bits.push("cache read $" + fmtMoneyShort(price.cacheRead));
+                  if (typeof price.cacheWrite === "number") bits.push("cache write $" + fmtMoneyShort(price.cacheWrite));
+                  if (bits.length) row("pr", "Price / 1M", bits.join(" · "));
+                } else if (subscriptionFor(tip.g.id, tip.m.id)) {
+                  row("pr", "Price", "Plan model (API reference price)");
+                }
+                if (detail !== null && typeof detail === "object") {
+                  if (Array.isArray(detail.inputModalities) || Array.isArray(detail.outputModalities)) {
+                    const mod = (detail.inputModalities || []).concat("→").concat(detail.outputModalities || []);
+                    if (mod.length > 1) row("mod", "Modalities", mod.join(" "));
+                  }
+                  if (detail.reasoning && typeof detail.reasoning === "object" && !ef) {
+                    if (Array.isArray(detail.reasoning.efforts) && detail.reasoning.efforts.length) {
+                      row("ref", "Reasoning", detail.reasoning.efforts.join(", ")
+                        + (detail.reasoning.defaultEffort ? " (default: " + detail.reasoning.defaultEffort + ")" : ""));
+                    } else if (typeof detail.reasoning.supported === "boolean") {
+                      row("ref", "Reasoning", yesNo(detail.reasoning.supported));
+                    }
+                  }
+                  row("tool", "Tool calling", yesNo(detail.toolCall));
+                  row("so", "Structured output", yesNo(detail.structuredOutput));
+                  row("temp", "Temperature", yesNo(detail.temperatureControl));
+                  row("att", "Attachments", yesNo(detail.attachment));
+                  row("ow", "Open weights", yesNo(detail.openWeights));
+                  if (detail.interleavedReasoning === true) row("il", "Interleaved", "Reasoning interleaved");
+                  if (detail.knowledgeCutoff) row("kn", "Knowledge", String(detail.knowledgeCutoff));
+                  if (detail.releaseDate) row("rel", "Released", String(detail.releaseDate));
+                  if (detail.lastUpdated && detail.lastUpdated !== detail.releaseDate) {
+                    row("lu", "Last update", String(detail.lastUpdated));
+                  }
+                  if (detail.status === "deprecated") row("st", "Status", "deprecated");
+                  if (detail.family) row("fam", "Family", String(detail.family));
+                  if (Array.isArray(detail.aliases) && detail.aliases.length) {
+                    row("al", "Aliases", detail.aliases.slice(0, 6).join(", "));
+                  }
+                  if (detail.canonicalModelId && detail.canonicalModelId !== tip.m.id) {
+                    row("cn", "Canonical", String(detail.canonicalModelId));
+                  }
+                  if (detail.provider && typeof detail.provider === "object") {
+                    const p = detail.provider;
+                    const bits = [];
+                    if (p.name) bits.push(String(p.name));
+                    if (p.envKey) bits.push(p.envKey);
+                    if (bits.length) row("pv", "Provider (models.dev)", bits.join(" · "));
+                  }
+                  if (detail.gateway && typeof detail.gateway === "object") {
+                    const gw = detail.gateway;
+                    if (gw.owned_by) row("gw1", "Gateway owner", String(gw.owned_by));
+                    if (gw.meta && typeof gw.meta === "object") {
+                      const metaBits = Object.entries(gw.meta).slice(0, 4)
+                        .map(([k, v]) => k + "=" + String(v)).join(" · ");
+                      if (metaBits) row("gw2", "Gateway meta", metaBits);
+                    }
+                  }
+                  if (detail.local === true) row("loc", "Endpoint", "Local");
+                  const src = detail.sources;
+                  if (src && typeof src === "object") {
+                    const names = [
+                      src.adapter ? "adapter" : null,
+                      src.modelsDev ? "models.dev" : null,
+                      src.gateway ? "gateway" : null,
+                    ].filter(Boolean);
+                    if (names.length) row("src", "Sources", names.join(" + "));
+                  }
+                }
+                return cells;
+              })();
+              const tipEl = React.createElement("div", Object.assign({
                 className: "mg-tooltip",
                 style: tipStyle,
-              },
-                React.createElement("div", { className: "mg-tt-name" }, tip.m.name || tip.m.id),
-                React.createElement("div", { className: "mg-tt-prov" }, tip.g.name || tip.g.id),
-                tip.m.id !== tip.m.name && React.createElement("div", { className: "mg-tt-id" }, tip.m.id),
+              }, tipHover),
+                React.createElement("div", { className: "mg-tt-name" },
+                  tip.m.name || tip.m.id,
+                  detail && detail.status === "deprecated"
+                    && React.createElement("span", { className: "mg-tt-status" }, "deprecated"),
+                  checked && React.createElement("span", { className: "mg-tt-sub" }, "sub-agent default")
+                ),
+                tip.m.id !== tip.m.name && React.createElement("div", { className: "mg-tt-id" },
+                  tip.g.id + "::" + tip.m.id),
                 tip.m.description && React.createElement("div", { className: "mg-tt-desc" }, tip.m.description),
-                (function () {
-                  const entry = priceFor(tip.g.id, tip.m.id);
-                  const ptxt = formatPrice(entry);
-                  const cw = contextFor(tip.g.id, tip.m.id);
-                  const mo = maxOutputFor(tip.g.id, tip.m.id);
-                  const rows = [];
-                  if (ptxt !== "") rows.push(React.createElement("div", { key: "p", className: "mg-tt-row" }, "Price: " + ptxt + " / 1M tokens"));
-                  else if (subscriptionFor(tip.g.id, tip.m.id)) {
-                    rows.push(React.createElement("div", { key: "p", className: "mg-tt-row" }, "Price: subscription plan (no per-token price)"));
-                  }
-                  if (cw !== null) {
-                    rows.push(React.createElement("div", { key: "c", className: "mg-tt-row" },
-                      "Context: " + formatTokens(cw) +
-                      (mo !== null ? " · Max output: " + formatTokens(mo) : "")
-                    ));
-                  }
-                  if (tip.m.reasoning && tip.m.reasoning.efforts && tip.m.reasoning.efforts.length) {
-                    rows.push(React.createElement("div", { key: "r", className: "mg-tt-row" },
-                      "Efforts: " + tip.m.reasoning.efforts.map((ef) => ef.name || ef.id).join(", ")
-                    ));
-                  }
-                  return rows;
-                })(),
-                React.createElement("div", { className: "mg-tt-meta" },
-                  React.createElement("span", null, "Provider: " + tip.g.id),
-                  React.createElement("span", null, "Local: " + (localFor(tip.g.id, tip.m.id) ? "yes" : "no"))
-                )
+                // The card exists to carry what the ROW cannot: the factual
+                // detail. Base rows are instant (directory/price data), the
+                // enriched grid follows the detail fetch once per model.
+                (facts.length > 0 || detail !== null) && React.createElement("div", { className: "mg-tt-grid" },
+                  facts,
+                  detail === null && React.createElement("div", { className: "mg-tt-skel" }, "Details"),
+                  detail === null && React.createElement("div", { className: "mg-tt-val" }, "…"),
+                ),
+                localFor(tip.g.id, tip.m.id) && React.createElement("span", { className: "mg-tt-local" }, "Local"),
+                // The checkbox BEHIND the card: make exactly this route::model
+                // the model EVERY future subagent runs with (parent sessions
+                // keep their own model). Persisted in the DSH settings
+                // document; the host enforces it at agents.create/resume.
+                React.createElement("label", { className: "mg-tt-subagent" },
+                  React.createElement("input", {
+                    type: "checkbox",
+                    checked,
+                    disabled: busy,
+                    onChange: (e) => toggleSubagentDefault(tip.g, tip.m, e.target.checked),
+                    onClick: (e) => e.stopPropagation(),
+                  }),
+                  React.createElement("span", { className: "mg-tt-subagent-label" },
+                    "Use for all sub-agents",
+                    React.createElement("span", { className: "mg-tt-subagent-hint" },
+                      "Every future subagent runs with this model — in any session, whatever the main session is set to."
+                    )
+                  )
+                ),
+                subagentErr && React.createElement("div", { className: "mg-tt-row", style: { color: "var(--dsw-alias-state-error-primary)", marginTop: "6px" } },
+                  subagentErr)
               );
               // Portal to <body>: the composer creates its own stacking
               // context, so an inline fixed tooltip loses against the chat
@@ -1438,16 +2341,33 @@ window.__ModuleLoader__.load({
                 const vh = typeof window === "undefined" ? 800 : window.innerHeight;
                 const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
                 const gap = 1;
-                const roomLeft = anchor.left - gap - 8; // viewport margin
-                const w = Math.min(
-                  panelRect ? panelRect.width : Math.min(440, vw - 32),
-                  Math.max(240, Math.floor(roomLeft)));
+                // Vertical room ABOVE the anchor: the popup grows upward from
+                // the panel's top edge, so it may not exceed that space. The
+                // 120px floor keeps the title readable on very short windows.
+                const roomUp = Math.max(120, anchor.top - gap - 8);
+                // Horizontal room to the LEFT of the anchor: the popup is
+                // right-anchored at anchor.left, so `left = anchor.left - w`.
+                // Clamping w honestly keeps it on-screen. The old
+                // Math.max(240, …) floor kept a width the viewport could not
+                // hold and pushed `left` below 0 — on narrow windows the
+                // breakdown was cut off instead of shrinking.
+                const roomLeft = Math.max(0, anchor.left - gap - 8);
+                const base = panelRect ? panelRect.width : Math.min(440, vw - 32);
+                // Below 240px the grid loses its data columns, so on a window
+                // that narrow the popup is useless anyway — but it must still
+                // stay on-screen. Park it at the viewport edge at that size
+                // rather than letting `left` go negative.
+                const w = roomLeft >= 240
+                  ? Math.min(base, roomLeft)
+                  : Math.min(base, Math.max(160, vw - 16));
                 const h = panelRect ? panelRect.height : Math.min(480, vh - 96);
                 return {
-                  right: Math.max(1, vw - anchor.left + gap),
+                  // Narrow fallback: anchor keeps 8px to the viewport edge
+                  // instead of the panel edge, so the card stays visible.
+                  right: roomLeft >= 240 ? Math.max(1, vw - anchor.left + gap) : 8,
                   top: Math.max(8, anchor.top),
-                  width: w,
-                  height: Math.min(h, vh - 16),
+                  width: Math.max(0, w),
+                  height: Math.min(h, roomUp, vh - 16),
                 };
               }
               function portalOrInline(el) {
@@ -1621,7 +2541,9 @@ window.__ModuleLoader__.load({
                   document.body.appendChild(a);
                   a.click();
                   document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
+                  // Revoke on the next tick: revoking synchronously after click() can cancel
+          // the download in some browsers before it has started.
+          globalThis.setTimeout(function () { URL.revokeObjectURL(url); }, 0);
                 } catch {}
               }
               const popEl = React.createElement("div", Object.assign({ className: "mg-costpop", style: popPos() }, popHover),
@@ -1681,7 +2603,14 @@ window.__ModuleLoader__.load({
                     title: "Sort by ≈ cost (asc → desc → off)",
                   }, "≈", sortInd("cost", modelSort))
                 ),
-                modelRows,
+                // The per-model summary is a FLEX child of the popup, which is
+                // `overflow:hidden` with a fixed height: rendered as a bare
+                // array its rows became direct flex children, so with more than
+                // a handful of models it pushed the step list past the popup's
+                // bottom edge and both became unreachable. Bounded + scrollable.
+                models.length > 0 && React.createElement("div", { className: "mg-costpop-mrows" },
+                  modelRows
+                ),
                 steps.length > 0 && React.createElement("div", { className: "mg-costpop-sep" }),
                 steps.length > 0 && React.createElement("div", { className: "mg-costpop-steps mg-costpop-th" },
                   React.createElement("button", {

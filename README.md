@@ -27,8 +27,9 @@ A searchable, sortable **model picker** for the [DeepSeek Harness](https://githu
 - **🎚️ Reasoning effort picker** — models that support reasoning levels get a compact dropdown right next to the model name in the chat composer, styled and opening **exactly like the model picker** (same trigger pill, same floating menu surface, ✓ marks the active level, click outside / `Esc` / selecting closes it). Picking a model starts it at the **adapter's own default level** (`reasoning.defaultEffort`) — the plugin never invents an effort the adapter did not ask for, so cost and latency stay as the adapter intends (with no declared default the field is omitted and the adapter decides); the dropdown re-selects the current model with the chosen effort — no clutter inside the picker panel
 - **💸 Live per-task usage & cost** — real provider-reported token usage (from the session log) is **always shown** while the panel is open (`in / out / cache`). Each model's usage is multiplied by **its own** (reference) price — properly attributed even when a session switched models mid-way — the same math OpenCode uses (`usage × price`, not a heuristic)
 - **🧾 Session cost breakdown** — hover the `approx cost` figure for a popup **sized like the picker and parked parallel on its left (1 px gap)**: a **table-style breakdown** with per-model totals (steps, In/Out/Cache in their own columns, ≈ cost) and a **timestamped step table**. **Clickable column headers** work like Excel / the main list (asc → desc → off, ▲/▼ indicator) on both tables; **copy** the summary or **export the (sorted) step list as CSV** (Excel-ready). The invisible hover target spans the cost row all the way to its left edge. Attribution of each step to its model comes straight from the session log (`request/context` events); nothing extra is stored
-- **🖱️ Detail tooltip** that opens *beside* the panel (never covers the list): description, price, context window, max output, reasoning efforts
-- **🎨 Native look** — built on the harness design tokens only (`--dsw-alias-*`, `--dsw-elevation-prominent`, `--dsw-specific-menu`); the picker panel and the effort menu use the **native menu geometry** (radius 20 px, elevation stroke, no border, no artificial darkening of the surface), while the detail tooltip and the cost popup are 12 px cards on the same surface token — light & dark themes follow the harness exactly
+- **🪪 Rich hover detail card** — the tooltip on a model row is now an **interactive card** carrying everything that is knowable about exactly that `provider::model`: base rows (context window, max output, price per 1 M incl. cache read/write, reasoning efforts, local) appear **instantly**, and the enriched grid (modality matrix, tool calling, structured output, temperature control, attachments, reasoning+default level, open weights, knowledge cutoff, release / last-updated dates, deprecation status, aliases, canonical id, provider env key, local-gateway raw metadata) arrives from `GET /model-garden/model-detail`. The host composes that card from **three sources** — the DSH adapter (`llm.resolveModelInfo`, what the route physically runs with), [models.dev](https://models.dev) (same catalog as the prices, plus a **24 h server-side cache pre-warmed at DSH startup**) and the **raw `/models` record of a local gateway** (llama.cpp `meta`, vLLM `max_model_len`, …). A footer states the provenance honestly; stale/unknown sources simply don't render
+- **🤖 Standard sub-agent model (checkbox in the detail card)** — every future subagent the harness runs anywhere is forced to the ticked `provider::model`, **no matter what model the spawning session uses** (main sessions keep their own model). Persisted in the DSH settings document (`model-garden:` section, survives restarts, hand-editable, hot-reloads), validated against the live route before it is saved, and enforced host-side at `agents.create`/`agents.resume` for every child created with `meta.origin: "subagent"` — that one seam covers in-process **spawn** and **fork** subagents, **continuable background** children, the **workflow engine's agent calls** (they bridge back into `ctx.subagents`) and the **cold resume** of a persisted subagent. Unchecking (or `POST {}`) switches back to plain inheritance; the active setting also shows in the picker's **⚙** panel. A child switched from another route drops its inherited reasoning effort so the forced model uses its own default, mirroring DSH's own `resolveChildAgentOptions` semantics
+- **🎨 Native look** — built on the harness design tokens only (`--dsw-alias-*`, `--dsw-elevation-prominent`, `--dsw-specific-menu`); the picker panel and the effort menu use the **native menu geometry** (radius 20 px, elevation stroke, no border, no artificial darkening of the surface), while the detail card and the cost popup are 12 px cards on the tip surface token — light & dark themes follow the harness exactly
 
 ## How it works
 
@@ -36,8 +37,9 @@ The package is a **static profile plugin** with two halves:
 
 | Half | File | Role |
 |---|---|---|
-| Client | `client.js` | Registers the `conversation.input.model` slot (priority `-1`, shadowing the native seat) and renders the picker |
-| Host | `index.js` | Serves same-origin JSON routes on the harness `webServer` service (cost, cost-history, catalog, server-models, refresh-models) |
+| Client | `client.js` | Registers the `conversation.input.model` slot (priority `-1`, shadowing the native seat) and renders the picker (table, detail cards, subagent checkbox) |
+| Host | `index.js` | Serves same-origin JSON routes on the harness `webServer` service (cost, cost-history, catalog, model-detail, subagent-model, server-models, refresh-models), installs the `model-garden:` settings section and wraps `agents.create`/`agents.resume` for the subagent override |
+| Shared logic | `lib/refresh-core.js`, `lib/pi-catalog.js`, `lib/detail-core.js`, `lib/subagent-core.js` | Dependency-free, unit-tested pieces: provider discovery + merge, pi-ai catalog loading, the detail-card merge rules, and the pure subagent-override semantics |
 
 ### Refresh button (⟳ in the picker)
 
@@ -71,6 +73,29 @@ GET /model-garden/cost-history?session=<sessionId>&limit=<n>
 GET /model-garden/catalog
   → { "provider::model": { local, context?, maxOutput? } }   (cached 10 min)
 
+GET /model-garden/model-detail?provider=<id>&model=<id>
+  → Merged hover-card detail for ONE route::model:
+    { name?, description?, context, maxOutput, inputModalities?, outputModalities?, reasoning?,
+      toolCall?, structuredOutput?, temperatureControl?, attachment?, openWeights?, knowledgeCutoff?,
+      releaseDate?, lastUpdated?, status?, family?, aliases?, canonicalModelId?,
+      price? { input, output, cacheRead, cacheWrite, reasoning },
+      provider? { modelsDevId, name, envKey, doc, npm, api },
+      gateway? (raw local-gateway record, snake_case), local,
+      sources: { adapter, modelsDev, gateway } }
+    (adapter + models.dev + local-gateway merge; cached 6 h host-side and 24 h
+     in the browser; unknown models are negatively cached for 10 min; the
+     models.dev source itself is cached 24 h server-side and pre-warmed at startup)
+
+GET /model-garden/subagent-model
+  → { subagentModel: { provider, model, reasoningEffort? } | null }   (current standard sub-agent model)
+
+POST /model-garden/subagent-model
+  body { provider, model, reasoningEffort? } pins it, body {} clears it
+  → { subagentModel, persisted, active } — 400 when the route cannot serve a
+    request (validated once through the host llm service) or the body carries
+    override fields that do not resolve; clearing switches subagents back to
+    plain inheritance.
+
 GET /model-garden/server-models
   → { providers: { "<id>": { models: [ "<id>", … ] } | { error } } }   (live probe of local gateways)
 
@@ -80,7 +105,18 @@ POST /model-garden/refresh-models
      already running — exactly one pass at a time — 504 on timeout)
 ```
 
-The cost endpoint aggregates the real `usage` payloads of `assistant/message` events from the durable session log — no estimation. The cost-history endpoint additionally attributes each usage step to the model in effect: `assistant/message` events carry usage but not the model, so it tracks `request/context` (and `request/header`) events, which precede the request they describe with `{ provider, model }` — a single pass over the same in-memory events, no extra persistence. The catalog endpoint resolves `contextWindow` / `defaultMaxTokens` per model through the host `llm` service (`resolveModelInfo`), so local/self-hosted providers report their real limits. Every route is **same-origin only**: no CORS wildcard is advertised, and the state-changing refresh rejects a cross-site request with `403` before it touches a provider — a website open in the same browser can neither read session usage nor trigger a re-sync with your stored provider credentials.
+The cost endpoint aggregates the real `usage` payloads of `assistant/message` events from the durable session log — no estimation. The cost-history endpoint additionally attributes each usage step to the model in effect: `assistant/message` events carry usage but not the model, so it tracks `request/context` (and `request/header`) events, which precede the request they describe with `{ provider, model }` — a single pass over the same in-memory events, no extra persistence. The catalog endpoint resolves `contextWindow` / `defaultMaxTokens` per model through the host `llm` service (`resolveModelInfo`), so local/self-hosted providers report their real limits. The model-detail endpoint merges that adapter data with the models.dev catalog (through the same `PROVIDER_ALIASES` the prices use) and the raw local-gateway `/models` record; all three slices plus the 24 h `api.json` download are host-side caches, so neither the first hover after a fresh start nor later hovers wait on a network. Every route is **same-origin only**: no CORS wildcard is advertised, and the state-changing routes (`refresh-models`, `subagent-model` POST) reject a cross-site request with `403` before they touch anything — a website open in the same browser can neither read session usage, nor trigger a re-sync with your stored provider credentials, nor change your subagent routing.
+
+### Standard sub-agent model — how the enforcement works
+
+The checkbox writes one value in two hops:
+
+1. **Validation + persistence** — `POST /model-garden/subagent-model` resolves the route once through the host `llm` service and stores `{ provider, model, reasoningEffort? }` (or `null`) in the DSH settings document under the plugin's own `model-garden:` section. It therefore survives restarts, is hand-editable in `settings.yaml` and hot-reloads like every other section.
+2. **Enforcement** — the host wraps `agents.create` / `agents.resume` and, for every call carrying `meta.origin: "subagent"` (or a `parentAgent` on resume), replaces `agentOptions.provider`/`model` with the pinned route and drops a route-inherited `reasoningEffort` — the same adjustment DSH's own `resolveChildAgentOptions` performs for a route change. That single seam covers **every in-process subagent transport**: the `spawn` and `fork` providers, continuable background children, the workflow engine's `agent()` calls (they bridge back into `ctx.subagents`) and the cold resume of a persisted continuable child. Main sessions (created or resumed without a subagent origin) are never touched.
+
+Only *future* subagents adopt the pinned model; children already running keep theirs. An unresolvable route fails validation instead of being stored. When a pinned route later disappears from the configuration, DSH's own "no provider/model" error surfaces at the child that inherits it — clear the checkbox or pin a live route again.
+
+Cheap verification: `curl -s http://127.0.0.1:3080/model-garden/subagent-model` echoes the current pin (or `null`), and `settings.yaml` shows the same value under `model-garden:`.
 
 ## Installation
 
@@ -115,13 +151,26 @@ No configuration is required. Several tweakable constants live at the top of the
 - **Hidden provider routes** — `HIDDEN_PROVIDER_PREFIXES` in `client.js` (and `SKIP_PREFIXES` in `index.js`). Some plugins mirror providers as internal routes (e.g. a vision toolkit duplicating every provider as `vision-toolkit-<id>`); such prefixes are excluded from the picker and the catalog.
 - **Price aliases** — `PROVIDER_ALIASES` / `MODEL_ALIASES` in `client.js` map DSH route ids to models.dev catalog ids. They serve two cases: renamed routes (`deepseek-official` → `deepseek`) and subscription routes whose catalog entry is all-zero (`kimi-for-coding` → `moonshotai`, `alibaba-tp` → `alibaba-cn`, `oneprovider` → `anthropic`), giving plan models their pay-as-you-go reference price.
 - **Price cache TTL** — `PRICE_TTL` (default 24 h) and **catalog TTL** — `CATALOG_TTL` (default 10 min).
+- **Detail card** in `index.js` — `MODELS_DEV_TTL` (default 24 h catalog download), `MODELS_DEV_RETRY` (2 min backoff after a failed download), `DETAIL_TTL` (6 h per merged card; adapter + gateway facts re-resolve after that), `DETAIL_NEG_TTL` (10 min negative cache for models no source knows), `DETAIL_ADAPTER_TIMEOUT` (8 s fence for one `resolveModelInfo`).
 - **Refresh timing** in `index.js` — `REFRESH_TIMEOUT` (default 15 s per provider), `REFRESH_HARD_CAP_MS` (default 60 s hard fence for a whole refresh pass) and `SERVER_MODELS_TIMEOUT` (default 5 s per local gateway probe for the **Live** inventory).
 
-Favorites, collapsed providers, the hidden-models/provider blacklist (`dsh.modelgarden.hidden`) and the price cache live in the browser's `localStorage` under `dsh.modelgarden.*`.
+Favorites, collapsed providers, the hidden-models/provider blacklist (`dsh.modelgarden.hidden`), the price cache (`dsh.modelgarden.prices`) and the hover-detail card cache (`dsh.modelgarden.details`, 24 h per model) live in the browser's `localStorage` under `dsh.modelgarden.*`.
+
+The **standard sub-agent model** lives on the SERVER, not in localStorage: the `model-garden:` section of the DSH settings document (`~/.dsh/settings.yaml`). Hand-edit it if you like and save — the section hot-reloads:
+
+```yaml
+model-garden:
+  subagentModel:
+    provider: deepseek-official
+    model: deepseek-chat
+    # reasoningEffort: high   # optional; omit to let the model use its default
+```
 
 ## Compatibility
 
-Developed and tested against DeepSeek Harness `0.1.0-rc.6` … `0.1.5-rc.1` (`@deepseek-ai/dsh-host-webserver`, `dsh-session`, `dsh-llm`, `dsh-client-ui-model-selection`). The client half is plain React via `window.__ModuleLoader__` — no build step, no dependencies.
+Developed and tested against DeepSeek Harness `0.1.0-rc.6` … `0.1.5-rc.2` (`@deepseek-ai/dsh-host-webserver`, `dsh-session`, `dsh-llm`, `dsh-subagent`, `dsh-api-session-controller`, `dsh-client-ui-model-selection`). The client half is plain React via `window.__ModuleLoader__` — no build step, no dependencies.
+
+The subagent override rides on stable seams: the settings section installs through the `settings` service's `installSection` contract (`@deepseek-ai/dsh-settings`), and the child-route forcing keys on `meta.origin: "subagent"` + `parentAgent` — both long-lived public surfaces of `dsh-subagent` / `dsh-agent`. Subagent transports that run in a SEPARATE process or worker (none in the stock harness: the workflow worker bridges its `agent()` calls back into the host's `ctx.subagents`) would keep their own routing.
 
 The cost endpoints read the durable session log through the session facade (`snapshotEvents()`, falling back to `ownEvents()` and to the older public `events` array), so token usage and the cost breakdown work across session-facade generations.
 

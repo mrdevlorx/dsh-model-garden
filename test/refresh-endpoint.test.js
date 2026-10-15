@@ -305,3 +305,141 @@ test("only one refresh pass runs at a time", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+test("every read route refuses a request the host fence rejects", async () => {
+  // The plugin routes expose per-session token usage and can spend stored
+  // provider credentials, so they must sit behind the SAME fence as the host's
+  // own /api: `connection.requestRejection(req)` (trusted host + origin +
+  // signed browser-session cookie). This test pins that down for all five.
+  const { ctx, routes } = makeCtx({ providers: {}, fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) }) });
+  // Stand in for a request the host would reject: 403 = not a trusted API
+  // request, 401 = no valid browser session.
+  const connection = { requestRejection: () => 403 };
+  ctx.get = (name) => ({ webServer: { register: (r) => { routes.set(r.path, r.handler); return () => {}; } }, settings: { get: () => undefined }, credentials: undefined, connection, llm: { listProviders: () => [] } })[name];
+  apply(ctx);
+
+  for (const path of [
+    "/model-garden/cost",
+    "/model-garden/catalog",
+    "/model-garden/cost-history",
+    "/model-garden/server-models",
+    "/model-garden/refresh-models",
+  ]) {
+    const handler = routes.get(path);
+    assert.ok(handler, `${path} registered`);
+    const res = responseSpy();
+    await handler({ method: path.endsWith("refresh-models") ? "POST" : "GET" }, res);
+    assert.equal(res.status, 403, `${path} must reject`);
+    // The answer stays JSON so the picker shows a readable message.
+    assert.doesNotThrow(() => JSON.parse(res.body), `${path} answers JSON`);
+  }
+});
+
+test("read routes fall back to the origin check without a connection service", async () => {
+  // Minimal profiles have no `connection` service; the origin half of the
+  // fence must still apply rather than letting the route through unchecked.
+  const { ctx, routes } = makeCtx({ providers: {}, fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) }) });
+  apply(ctx);
+  for (const path of ["/model-garden/cost", "/model-garden/catalog", "/model-garden/cost-history", "/model-garden/server-models"]) {
+    const handler = routes.get(path);
+    const cross = responseSpy();
+    await handler({ method: "GET", headers: { "sec-fetch-site": "cross-site" } }, cross);
+    assert.equal(cross.status, 403, `${path} rejects a cross-site read`);
+  }
+});
+
+test("server-models warns when a gateway credential goes out in cleartext", async () => {
+  // A LAN gateway over plain http receives the route's bearer token in the
+  // clear, automatically, on every poll. That is the configured behaviour and
+  // must keep working — but it must not be silent.
+  const providers = { "gate": { baseURL: "http://192.168.1.50:8080/v1", apiKeyEnv: "GATE_KEY" } };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, text: async () => JSON.stringify({ data: [{ id: "m1" }] }) });
+  try {
+    const credentials = { async resolve(ref) { return ref === "GATE_KEY" ? { value: "s" } : undefined; } };
+    const routes = new Map();
+    const settings = { get: (ns) => ns === "llm-pi-ai" ? { providers } : undefined };
+    const webServer = { register(route) { routes.set(route.path, route.handler); return () => {}; } };
+    const ctx = {
+      baseUrl: "/nonexistent/base/url",
+      get: (name) => ({ webServer, settings, credentials })[name],
+      effect: (fn) => fn(),
+      on: () => {},
+    };
+    apply(ctx);
+    const res = responseSpy();
+    await routes.get("/model-garden/server-models")({ method: "GET" }, res);
+    const info = JSON.parse(res.body).providers.gate;
+    assert.deepEqual(info.models, ["m1"], "the probe still returns models");
+    assert.match(info.warning, /plain HTTP/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the browser still works after the fence is armed, curl does not", async () => {
+  // The most important regression guard for the auth fence: enabling it must
+  // NOT break the picker. This stub reproduces the REAL logic of the host's
+  // connection service (dsh-client-connection):
+  //   isTrustedApiRequest: host must be loopback/trusted, sec-fetch-site must
+  //     not be cross-site, and an Origin (when present) must match the Host.
+  //   isAuthenticated: the browser must carry the signed dsh-auth cookie.
+  // requestRejection returns 403 / 401 / undefined accordingly.
+  const AUTHORITY = "127.0.0.1:3080";
+  const CONNECTION = {
+    requestRejection(req) {
+      const host = req.headers && req.headers.host;
+      if (typeof host !== "string" || host === "") return 403;
+      if (!/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host)) return 403;
+      if (req.headers["sec-fetch-site"] === "cross-site") return 403;
+      const origin = req.headers.origin;
+      if (typeof origin === "string" && origin !== "") {
+        try { if (new URL(origin).host !== host) return 403; } catch { return 403; }
+      }
+      // No cookie -> not a browser session -> 401.
+      if (req.headers.cookie !== "dsh-auth-" + AUTHORITY + "=signed") return 401;
+      return undefined;
+    },
+  };
+  const BROWSER = {
+    host: AUTHORITY,
+    cookie: "dsh-auth-" + AUTHORITY + "=signed",
+    "sec-fetch-site": "same-origin",
+  };
+
+  const { ctx, routes, settings } = makeCtx({ providers: {}, fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ data: [] }) }) });
+  const webServer = { register: (r) => { routes.set(r.path, r.handler); return () => {}; } };
+  ctx.get = (name) => ({
+    webServer,
+    settings,
+    credentials: undefined,
+    connection: CONNECTION,
+    llm: { listProviders: () => [], listModels: () => [], resolveModelInfo: async () => ({}) },
+  })[name];
+  apply(ctx);
+
+  // 1. the picker itself: same-origin fetch WITH the cookie -> works.
+  // /catalog answers from a promise chain, so let the microtask drain before
+  // asserting (the HTTP response is flushed by writeHead/end either way).
+  const okRes = responseSpy();
+  await routes.get("/model-garden/catalog")({ method: "GET", headers: { ...BROWSER } }, okRes);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(okRes.status, 200, "the browser must still read the catalog");
+
+  // 2. the picker POSTing a refresh with the cookie -> not rejected by the fence
+  const postRes = responseSpy();
+  await routes.get("/model-garden/refresh-models")({ method: "POST", headers: { ...BROWSER } }, postRes);
+  assert.notEqual(postRes.status, 401, "the browser must still be able to refresh");
+  assert.notEqual(postRes.status, 403, "the browser must still be able to refresh");
+
+  // 3. curl on the same machine: no cookie -> 401
+  const curlRes = responseSpy();
+  await routes.get("/model-garden/catalog")({ method: "GET", headers: { host: AUTHORITY } }, curlRes);
+  assert.equal(curlRes.status, 401, "an unauthenticated local process is refused");
+
+  // 4. a website in the same browser cannot ride the cookie cross-site
+  const evilRes = responseSpy();
+  await routes.get("/model-garden/cost-history")(
+    { method: "GET", headers: { ...BROWSER, "sec-fetch-site": "cross-site" } }, evilRes);
+  assert.equal(evilRes.status, 403, "a cross-site read is refused");
+});

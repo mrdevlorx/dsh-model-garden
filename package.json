@@ -1,7 +1,7 @@
 {
   "name": "dsh-model-garden",
-  "version": "0.7.1",
-  "description": "A searchable, sortable model picker for the DeepSeek Harness Web UI — provider groups, favorites, hidden-models blacklist, live per-task cost, prices and context windows, plus a refresh button that re-syncs every provider model list from its live API.",
+  "version": "0.8.0",
+  "description": "A searchable, sortable model picker for the DeepSeek Harness Web UI — provider groups, favorites, hidden-models blacklist, live per-task cost, prices and context windows, rich per-model hover detail cards (models.dev + adapter + gateway data, cached once per model), a refresh button that re-syncs every provider model list from its live API, and a checkbox that pins a standard sub-agent model for every future subagent.",
   "keywords": [
     "deepseek-harness",
     "dsh",
@@ -11,7 +11,9 @@
     "model-selection",
     "models.dev",
     "llm",
-    "token-cost"
+    "token-cost",
+    "subagent",
+    "model-detail"
   ],
   "license": "MIT",
   "author": "mrdevlorx",
@@ -35,10 +37,14 @@
     "client.js",
     "lib/refresh-core.js",
     "lib/pi-catalog.js",
+    "lib/detail-core.js",
+    "lib/subagent-core.js",
     "bin/refresh-models.mjs",
     "test/refresh-core.test.js",
     "test/refresh-endpoint.test.js",
     "test/cost-endpoint.test.js",
+    "test/subagent-core.test.js",
+    "test/feature-endpoints.test.js",
     "cordis.patch.yml",
     "README.md",
     "LICENSE"

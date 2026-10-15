@@ -17,6 +17,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { apply } from "../index.js";
 
+// apply() → mount() pre-warms the model-detail source (a 24 h models.dev
+// download). The cost tests never exercise it: stub the global fetch so the
+// fire-and-forget pre-warm cannot touch the real network from this file.
+if (typeof globalThis.fetch === "function") {
+  globalThis.fetch = async (url) => {
+    throw new Error("unexpected fetch in cost-endpoint tests: " + String(url));
+  };
+}
+
 const USAGE_EVENTS = [
   { type: "request/context", seq: 1, time: 1000, data: { provider: "p1", model: "m1" } },
   { type: "assistant/message", seq: 2, time: 2000, data: { usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 5 } } },
