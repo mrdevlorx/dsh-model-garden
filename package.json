@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-garden",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Model picker for the DeepSeek Harness Web UI: searchable table, faceted capability filters, live costs, detail card and a pinned sub-agent model.",
   "keywords": [
     "deepseek-harness",
