@@ -61,10 +61,18 @@ window.__ModuleLoader__.load({
 
     // ---- static CSS (guarded, idempotent across hot reloads) ----
     const CSS_ID = "model-garden";
-    if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(CSS_ID) + "]") === null) {
-      const tag = document.createElement("style");
+    // Bump on every stylesheet change: the style element is keyed by a version
+    // attribute, so a hot reload REPLACES stale rules instead of keeping the
+    // first ones forever (a plain presence check made every CSS edit invisible
+    // until a full page reload).
+    const CSS_VERSION = "2026-10-29.29";
+    const CSS_SELECTOR = "style[data-plugin-css=" + JSON.stringify(CSS_ID) + "]";
+    const existingCss = typeof document === "undefined" ? null : document.querySelector(CSS_SELECTOR);
+    if (typeof document !== "undefined" && (existingCss === null || existingCss.dataset.pluginCssVersion !== CSS_VERSION)) {
+      const tag = existingCss === null ? document.createElement("style") : existingCss;
       tag.dataset.plugin = "model-garden";
       tag.dataset.pluginCss = CSS_ID;
+      tag.dataset.pluginCssVersion = CSS_VERSION;
       tag.textContent = [
         ".mg-outer { position: relative; }",
         ".mg-backdrop { position: fixed; inset: 0; z-index: 1099; background: transparent; border: none; padding: 0; margin: 0; cursor: default; }",
@@ -86,7 +94,7 @@ window.__ModuleLoader__.load({
         ".mg-effort-label { flex: 0 1 auto; color: var(--dsw-alias-label-caption); }",
         // The floating effort menu — same surface, border, radius, shadow and
         // z-order as the model picker panel (--mg-panel-bg).
-        ".mg-effort-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 1100; width: 168px; max-height: 320px; overflow-y: auto; padding: 4px; border: 0; border-radius: 20px; box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); color: var(--dsw-alias-label-primary); }",
+        ".mg-effort-menu { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 1100; width: 168px; max-height: 320px; overflow-y: auto; padding: 4px; border: 0; border-radius: var(--dsw-radius-lg, 16px); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l2, rgba(128,140,160,.3)); --mg-panel-bg: var(--dsw-alias-bg-module-platform, #353638); background: var(--mg-panel-bg); color: var(--dsw-alias-label-primary); }",
         ".mg-effort-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 8px; border: none; border-radius: 8px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; font-weight: 500; line-height: 20px; text-align: left; cursor: pointer; }",
         ".mg-effort-item:hover { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-effort-item.active { color: var(--dsw-alias-state-business-primary); }",
@@ -97,21 +105,24 @@ window.__ModuleLoader__.load({
         // Rotation follows each trigger's OWN expanded state — the model
         // chevron and the effort chevron never rotate each other.
         ".mg-trigger[aria-expanded='true'] .mg-chev { transform: rotate(180deg); }",
-        // Panel — the native menu surface (same token, radius 20 and
-        // `--dsw-elevation-prominent` as the stock model menu) with a FIXED
-        // size, so light and dark theming match the harness exactly.
-        // Panel — mirrors the native `_menu` surface token-for-token: content
-        // sized (max-width/max-height, not fixed), 4px padding, radius 20,
-        // elevation-prominent + hairline stroke. No forced 440x480 box.
-        ".mg-panel { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 1100; display: flex; flex-direction: column; width: max-content; min-width: min(272px, 100vw - 32px); max-width: min(420px, 100vw - 32px); max-height: min(360px, 100vh - 96px); overflow: hidden; box-sizing: border-box; padding: 4px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); border: 0; border-radius: 20px; box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); color: var(--dsw-alias-label-primary); --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }",
+        // Panel — a SOLID elevated surface, not the translucent menu glass.
+        // DSH 0.2's `--dsw-specific-menu` resolves to `--dsw-menu-surface-fill`
+        // (≈45% alpha) and is only meant together with
+        // `backdrop-filter: var(--dsw-menu-backdrop-filter)`; painting it
+        // without the blur let the composer text show straight through.
+        // `--dsw-alias-bg-module-platform` is the opaque raised surface the
+        // stock model menu uses, so the panel reads as a real sheet in both
+        // themes. Content sized (max-width/max-height, not fixed), 4px padding,
+        // radius-lg, elevation-prominent + hairline stroke.
+        ".mg-panel { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 1100; display: flex; flex-direction: column; width: max-content; min-width: min(272px, 100vw - 32px); max-width: min(420px, 100vw - 32px); max-height: min(360px, 100vh - 96px); overflow: hidden; box-sizing: border-box; padding: 4px; --mg-panel-bg: var(--dsw-alias-bg-module-platform, #353638); background: var(--mg-panel-bg); border: 0; border-radius: var(--dsw-radius-lg, 16px); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l2, rgba(128,140,160,.3)); color: var(--dsw-alias-label-primary); --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); }",
         // Search row — hairline divider instead of a hard border; the input is
         // a quiet inset field (no heavy 1px outline fighting the menu surface)
         // that only picks up an accent ring on focus.
-        ".mg-search { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 4px 6px; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); }",
-        ".mg-search input { flex: 1; min-width: 0; box-sizing: border-box; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-interactive-bg-hover)); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 20px; outline: none; transition: border-color var(--ds-transition-duration-fast, .12s) var(--ds-ease-in-out, ease); }",
+        ".mg-search { flex: none; display: flex; align-items: center; gap: 6px; padding: 2px 4px 4px; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); }",
+        ".mg-search input { flex: 1; min-width: 0; box-sizing: border-box; height: 28px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; background: var(--dsw-alias-bg-layer-2, var(--dsw-alias-interactive-bg-hover)); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 20px; outline: none; transition: border-color var(--ds-transition-duration-fast, .12s) var(--ds-ease-in-out, ease); }",
         ".mg-search input::placeholder { color: var(--dsw-alias-label-dimmed); }",
         ".mg-search input:focus { border-color: var(--dsw-alias-state-business-primary); }",
-        ".mg-local { flex: none; display: inline-flex; align-items: center; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; }",
+        ".mg-local { flex: none; display: inline-flex; align-items: center; height: 28px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-l3); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; line-height: 18px; cursor: pointer; }",
         ".mg-local:hover { background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-local.on { background: var(--dsw-alias-state-business-tertiary); border-color: transparent; color: var(--dsw-alias-state-business-primary); }",
         // Refresh (⟳) button shares the toggle geometry; while busy it stays
@@ -126,51 +137,52 @@ window.__ModuleLoader__.load({
         // second copy of those models as full list rows. As rows, every recent
         // model appeared twice in one view (once here, once under its provider),
         // which read as duplicated information.
-        ".mg-recent { flex: none; display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); }",
+        ".mg-recent { flex: none; display: flex; gap: 6px; padding: 3px 6px; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); }",
         ".mg-recent::-webkit-scrollbar { display: none; }",
-        ".mg-recent-chip { flex: none; max-width: 168px; display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border: none; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; font-weight: 500; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }",
-        ".mg-recent-chip:hover { color: var(--dsw-alias-label-primary); }",
+        ".mg-recent-chip { flex: none; max-width: 168px; display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border: none; border-radius: 6px; background: transparent; color: var(--dsw-alias-label-tertiary); font: inherit; font-size: 11px; font-weight: 500; line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }",
+        ".mg-recent-chip:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }",
         ".mg-recent-chip:focus-visible { box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); outline: none; }",
         // The chip for the model currently in effect, matching the ✓ accent.
         ".mg-recent-chip.on { background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-state-business-primary); }",
-".mg-thead { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px 24px; align-items: center; gap: 8px; padding: 4px 8px 6px; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); background: var(--mg-panel-bg, var(--dsw-specific-menu)); font-size: 11px; font-weight: 500; line-height: 16px; color: var(--dsw-alias-label-caption); }",
+".mg-thead { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px 24px; align-items: center; gap: 8px; padding: 3px 8px 4px; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); background: var(--mg-panel-bg, var(--dsw-alias-bg-module-platform, #353638)); font-size: 10.5px; font-weight: 500; line-height: 15px; color: var(--dsw-alias-label-tertiary); }",
         ".mg-th { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0; border: none; background: transparent; font: inherit; text-transform: inherit; letter-spacing: inherit; color: inherit; cursor: pointer; }",
         ".mg-th:hover { color: var(--dsw-alias-label-primary); }",
         ".mg-th.active { color: var(--dsw-alias-state-business-primary); }",
         ".mg-th.ctx, .mg-th.price { justify-content: flex-start; }",
         ".mg-th.star { justify-content: center; font-size: 14px; text-transform: none; }",
         ".mg-th .mg-ind { font-size: 9px; }",
-        ".mg-count { font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-caption); }",
+        ".mg-count { flex: none; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-caption); white-space: nowrap; }",
+        ".mg-status > .mg-count:last-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }",
         // Groups scroll area — native `_groups` carries NO padding of its own
         // (the panel's own 4px padding frames the content). The old extra
         // `0 4px 4px` pushed rows inward and broke native alignment.
-        ".mg-groups { flex: 1; min-height: 0; overflow-y: auto; }",
+        ".mg-groups { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }",
         ".mg-group + .mg-group { margin-top: 4px; }",
         // Group header — sticky, same geometry as the native `_groupTitle`:
         // no stray border-radius (native draws no rounded rect behind it).
-        ".mg-grouphead { position: sticky; top: 27px; z-index: 1; display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 5px 8px 3px; font: inherit; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--dsw-alias-label-tertiary); background: var(--mg-panel-bg, var(--dsw-specific-menu)); border: none; cursor: pointer; text-align: left; }",
+        ".mg-grouphead { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 3px 8px 2px; font: inherit; font-size: 11.5px; font-weight: 500; line-height: 16px; color: var(--dsw-alias-label-tertiary); background: var(--mg-panel-bg, var(--dsw-alias-bg-module-platform, #353638)); border: none; cursor: pointer; text-align: left; }",
         // The "Recent" header is a label, not a control: same geometry, no caret
         // rotation, no pointer cursor, not focusable.
         ".mg-grouphead.static { cursor: default; }",
         ".mg-grouphead.static:hover { color: var(--dsw-alias-label-tertiary); }",
         ".mg-caret { display: inline-block; width: 12px; flex: none; font-size: 9px; color: var(--dsw-alias-label-caption); transition: transform var(--ds-transition-duration-fast, .12s) var(--ds-ease-in-out, ease); }",
         ".mg-grouphead.closed .mg-caret { transform: rotate(-90deg); }",
-        ".mg-badge { margin-left: auto; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 8px; background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-state-business-primary); }",
+        ".mg-badge { margin-left: auto; font-size: 10.5px; line-height: 15px; padding: 0 5px; border-radius: 8px; background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-state-business-primary); }",
         ".mg-groupbody { overflow: hidden; }",
         // Option rows — SAME fixed-width raster as .mg-thead: every row is its
         // own grid container, so `auto` columns would size per row and break
         // column alignment. Fixed px widths keep all rows in lockstep.
-        ".mg-model { display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px 24px; align-items: center; gap: 8px; width: 100%; min-height: 38px; box-sizing: border-box; padding: 6px 8px; border: none; border-radius: 10px; outline: none; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }",
+        ".mg-model { display: grid; grid-template-columns: 14px minmax(0,1fr) 44px 84px 24px 24px; align-items: center; gap: 8px; width: 100%; min-height: 32px; box-sizing: border-box; padding: 3px 8px; border: none; border-radius: 8px; outline: none; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; text-align: left; cursor: pointer; }",
         ".mg-model:hover, .mg-model:focus-visible { background: var(--dsw-alias-interactive-bg-hover); }",
         // Keyboard cursor — the SAME surface tone as :hover, so a row driven by
         // the arrow keys looks like one under the pointer, plus a slim accent
         // edge so the position is obvious when arrowing quickly.
         ".mg-model.active { background: var(--dsw-alias-interactive-bg-hover); box-shadow: inset 2px 0 0 var(--dsw-alias-state-business-primary); }",
         ".mg-check { text-align: center; font-size: 12px; line-height: 1; color: var(--dsw-alias-label-primary); }",
-        ".mg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; line-height: 20px; }",
+        ".mg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; font-weight: 500; line-height: 18px; }",
         ".mg-name .mg-prov { font-size: 11px; font-weight: 400; color: var(--dsw-alias-label-caption); }",
-        ".mg-price { font-size: 12px; line-height: 18px; text-align: left; color: var(--dsw-alias-label-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }",
-        ".mg-ctx { font-size: 12px; line-height: 18px; text-align: left; color: var(--dsw-alias-label-tertiary); white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }",
+        ".mg-price { font-size: 11.5px; line-height: 16px; text-align: left; color: var(--dsw-alias-label-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }",
+        ".mg-ctx { font-size: 11.5px; line-height: 16px; text-align: left; color: var(--dsw-alias-label-tertiary); white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }",
         ".mg-star { cursor: pointer; font-size: 14px; line-height: 1; padding: 2px 3px; border-radius: 4px; text-align: center; color: var(--dsw-alias-label-caption); opacity: .6; }",
         ".mg-model:hover .mg-star { opacity: 1; }",
         ".mg-star.on { color: var(--dsw-alias-state-warn-primary); opacity: 1; }",
@@ -181,12 +193,53 @@ window.__ModuleLoader__.load({
         ".mg-model:hover .mg-hide, .mg-grouphead:hover .mg-hide { opacity: 1; }",
         "@media (hover: none) { .mg-hide { opacity: .6; } }",
         ".mg-hide.on { color: var(--dsw-alias-state-business-primary); opacity: 1; }",
+        // Deprecated models: a PERMANENTLY visible red cross that deletes the
+        // entry from the provider's configured list (with an inline
+        // confirmation), unlike the hover-only local hide cross above.
+        ".mg-remove { cursor: pointer; font-size: 12px; line-height: 1; padding: 2px 3px; border-radius: 4px; text-align: center; color: var(--dsw-alias-state-error-primary); opacity: .8; }",
+        ".mg-model:hover .mg-remove { opacity: 1; }",
+        ".mg-remove:focus-visible { opacity: 1; outline: none; box-shadow: 0 0 0 2px var(--dsw-alias-state-error-primary); }",
+        ".mg-model.deprecated .mg-name { color: var(--dsw-alias-label-secondary); }",
+        ".mg-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 1px 2px 3px; padding: 6px 8px; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover-danger, rgba(224,80,80,.14)); font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-secondary); }",
+        ".mg-confirm-q { flex: 1 1 100%; min-width: 0; white-space: normal; color: var(--dsw-alias-label-primary); }",
+        ".mg-confirm-err { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-state-error-primary); }",
+        ".mg-confirm-ok { margin-left: auto; }",
+        ".mg-confirm-ok, .mg-confirm-cancel { flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l3, rgba(128,140,160,.45)); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; }",
+        ".mg-confirm-ok { border-color: transparent; background: var(--dsw-alias-state-error-primary); color: var(--dsw-alias-label-primary-inverted, #fff); font-weight: 500; }",
+        ".mg-confirm-ok:disabled { opacity: .6; cursor: wait; }",
+        ".mg-confirm-cancel:hover, .mg-confirm-ok:hover:not(:disabled) { filter: brightness(1.06); }",
+        // Advanced filters: a second sheet directly above the picker, same
+        // width, own checkbox rows.
+        ".mg-adv { position: fixed; z-index: 1101; display: flex; flex-direction: column; gap: 1px; box-sizing: border-box; max-height: min(72vh, 470px); overflow-y: auto; overscroll-behavior: contain; padding: 0 4px 6px; --mg-panel-bg: var(--dsw-alias-bg-module-platform, #353638); background: var(--mg-panel-bg); border: 0; border-radius: var(--dsw-radius-lg, 16px); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l2, rgba(128,140,160,.3)); color: var(--dsw-alias-label-primary); }",
+        ".mg-adv-title { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; margin: 0 -4px; padding: 5px 12px 5px; background: var(--mg-panel-bg, var(--dsw-alias-bg-module-platform, #353638)); border-radius: 12px 12px 0 0; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.16)); font-size: 10px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--dsw-alias-label-caption); }",
+        ".mg-adv-reset { margin-left: auto; height: 18px; padding: 0 7px; border-radius: 5px; border: 1px solid var(--dsw-alias-border-l3, rgba(128,140,160,.45)); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 10.5px; line-height: 16px; text-transform: none; letter-spacing: 0; cursor: pointer; }",
+        ".mg-adv-reset:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }",
+        ".mg-adv-reset:disabled { opacity: .4; cursor: default; }",
+        ".mg-adv-row { display: flex; align-items: center; gap: 8px; padding: 3px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; line-height: 16px; }",
+        ".mg-adv-row:hover { background: var(--dsw-alias-interactive-bg-hover); }",
+        ".mg-adv-row input:disabled { opacity: .4; cursor: default; }",
+        ".mg-adv-row input { flex: none; margin: 0; width: 13px; height: 13px; accent-color: var(--dsw-alias-state-business-primary); cursor: pointer; }",
+        ".mg-adv-label { flex: none; font-weight: 500; }",
+        // Marker on the row that currently pins every sub-agent's model.
+        ".mg-adv-prov { cursor: default; }",
+        ".mg-adv-selectrow { cursor: default; }",
+        ".mg-adv-selectrow .mg-adv-select { height: 22px; font-size: 11px; max-width: 54%; }",
+        ".mg-adv-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 8px; align-items: start; }",
+        ".mg-adv-col { display: flex; flex-direction: column; gap: 1px; min-width: 0; }",
+        ".mg-adv-sec { margin: 7px 4px 0; padding: 4px 8px 3px; border-top: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.16)); font-size: 9.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dsw-alias-label-tertiary); }",
+        ".mg-adv-sec:first-of-type { margin-top: 1px; border-top: 0; }",
+        ".mg-adv-count { margin-left: auto; flex: none; padding-left: 8px; font-size: 10.5px; line-height: 16px; color: var(--dsw-alias-label-tertiary); font-variant-numeric: tabular-nums; }",
+        ".mg-adv-select { flex: 0 1 auto; min-width: 0; max-width: 64%; margin-left: auto; height: 24px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l2, rgba(128,140,160,.3)); background: var(--dsw-alias-bg-layer-2, rgba(0,0,0,.2)); color: var(--dsw-alias-label-primary); font: inherit; font-size: 11.5px; cursor: pointer; }",
+        ".mg-adv-select:hover { border-color: var(--dsw-alias-border-l3, rgba(128,140,160,.45)); }",
+        ".mg-adv-select:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary); }",
+        ".mg-adv-select option { background: var(--dsw-alias-bg-module-platform, #353638); color: var(--dsw-alias-label-primary); }",
+        ".mg-pin { margin-left: 6px; padding: 0 5px; border-radius: 5px; background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-state-business-primary); font-size: 10px; font-weight: 500; line-height: 15px; }",
         // A focusable control must never stay invisible: opacity:0 until
         // :hover would hide it from a keyboard user entirely.
         ".mg-star:focus-visible, .mg-hide:focus-visible { opacity: 1; outline: none; box-shadow: 0 0 0 2px var(--dsw-alias-border-l3); }",
         // Hidden-settings popup: a compact card listing the blacklisted
         // providers and models, each with a "show" link to un-hide.
-        ".mg-hidepanel { position: absolute; left: 8px; right: 8px; top: 48px; z-index: 5; display: flex; flex-direction: column; box-sizing: border-box; max-height: 300px; overflow: hidden; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv2)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
+        ".mg-hidepanel { position: absolute; left: 8px; right: 8px; top: 48px; z-index: 5; display: flex; flex-direction: column; box-sizing: border-box; max-height: 300px; overflow: hidden; padding: 9px 11px; border-radius: 12px; --mg-panel-bg: var(--dsw-alias-bg-module-platform, #353638); background: var(--mg-panel-bg); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l2, rgba(128,140,160,.3)); font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
         ".mg-hidepanel-title { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 2px; }",
         ".mg-hidepanel-clear { margin-left: auto; flex: none; height: 20px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l3, rgba(128,140,160,.45)); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 18px; cursor: pointer; }",
         ".mg-hidepanel-sect { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--dsw-alias-label-tertiary); margin: 6px 0 2px; }",
@@ -197,17 +250,18 @@ window.__ModuleLoader__.load({
         ".mg-hideitem-show { flex: none; height: 18px; padding: 0 7px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l3, rgba(128,140,160,.45)); background: transparent; color: inherit; font: inherit; font-size: 11px; line-height: 16px; cursor: pointer; }",
         ".mg-hidepanel-empty { color: var(--dsw-alias-label-tertiary); font-style: italic; }",
         ".mg-empty { flex: none; padding: 10px; text-align: center; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }",
-        ".mg-status { flex: none; padding: 6px 10px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-tertiary); }",
+        ".mg-status { flex: none; padding: 4px 8px; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-tertiary); }",
         // Error strip — native metrics: full-bleed inside the menu's own 4px padding
         // (the old 8px side inset made the band narrower than every other
         // element) and a flex row so the Retry action has somewhere to sit.
         ".mg-error { flex: none; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 4px; padding: 7px 8px; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover-danger); color: var(--dsw-alias-state-error-primary); font-size: 12px; line-height: 18px; }",
         ".mg-retry { flex: none; padding: 0; border: none; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }",
         // Warning strip (e.g. a gateway the Live filter could not enumerate).
-        ".mg-warn { flex: none; padding: 6px 10px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-warn-label); background: var(--dsw-alias-bg-module-platform); }",
+        ".mg-warn { flex: none; padding: 6px 10px; font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-warn-label); background: var(--dsw-alias-state-warn-tertiary, var(--dsw-alias-interactive-bg-hover)); }",
         // Keyboard hint strip under the footer.
-        ".mg-hint { flex: none; padding: 0 10px 6px; font-size: 10.5px; line-height: 16px; color: var(--dsw-alias-label-caption); text-align: center; }",
-        ".mg-cost { flex: none; padding: 6px 10px; border-top: 1px solid var(--dsw-alias-border-l2); font-size: 12px; line-height: 18px; color: var(--dsw-alias-state-business-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }",
+        ".mg-hint { flex: none; padding: 0 10px 4px; font-size: 10px; line-height: 14px; color: var(--dsw-alias-label-dimmed); text-align: center; }",
+        ".mg-cost { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 0; border: 0; font-size: 11px; line-height: 16px; color: var(--dsw-alias-state-business-primary); white-space: nowrap; }",
+        ".mg-cost > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
         ".mg-cost-detail { color: var(--dsw-alias-label-tertiary); }",
         // The reasoning-effort choice lives in the chat composer next to the
         // model name (mg-effort-outer/menu) — no UI for it inside the panel.
@@ -218,7 +272,7 @@ window.__ModuleLoader__.load({
         ".mg-costbtn { display: inline-block; padding: 1px 8px 1px 10px; margin: -1px 0 -1px -10px; border: 1px solid transparent; border-radius: 8px; cursor: help; }",
         // Interactive popup: the pointer may enter it, scroll the step list
         // and press the copy button.
-        ".mg-costpop { position: fixed; z-index: 1101; display: flex; flex-direction: column; box-sizing: border-box; width: 380px; overflow: hidden; padding: 9px 11px; border-radius: 10px; --mg-panel-bg: var(--dsw-specific-menu); background: var(--mg-panel-bg); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv2)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); pointer-events: auto; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); overscroll-behavior: contain; }",
+        ".mg-costpop { position: fixed; z-index: 1101; display: flex; flex-direction: column; box-sizing: border-box; width: min(380px, calc(100vw - 16px)); overflow: hidden; padding: 9px 11px; border-radius: 12px; --mg-panel-bg: var(--dsw-alias-bg-module-platform, #353638); background: var(--mg-panel-bg); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l2, rgba(128,140,160,.3)); pointer-events: auto; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); overscroll-behavior: contain; }",
         // Only the step list scrolls; title + model summary stay pinned.
         // flex:1 + min-height:0 is what makes the scroll area reachable
         // to its very top (a plain overflow-y:auto flex child clips it).
@@ -267,35 +321,39 @@ window.__ModuleLoader__.load({
         // The card is INTERACTIVE (sub-agent checkbox, mouse can travel into
         // it), so unlike before `pointer-events` stays on and closing is
         // delayed by the same 180 ms handoff the cost popup uses.
-        ".mg-tooltip { position: fixed; z-index: 1101; min-width: 200px; max-width: 320px; max-height: min(60vh, 420px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); padding: 9px 11px; border-radius: 10px; background: var(--dsw-specific-tip); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv2)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); pointer-events: auto; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
-        ".mg-tt-name { font-size: 13px; font-weight: 600; line-height: 20px; margin-bottom: 2px; word-break: break-word; }",
+        ".mg-tooltip { position: fixed; z-index: 1101; min-width: 240px; max-width: 360px; max-height: min(60vh, 440px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2); --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2); padding: 10px 12px; border-radius: 12px; background: var(--dsw-specific-tip); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv2)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); pointer-events: auto; font-size: 12px; line-height: 18px; color: var(--dsw-alias-label-primary); }",
+        ".mg-tt-name { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 2px; }",
+        ".mg-tt-nametext { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600; line-height: 20px; word-break: break-word; }",
+        ".mg-tt-subtog { flex: none; display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; padding: 1px 7px 1px 5px; border-radius: 6px; border: 1px solid var(--dsw-alias-border-l2, rgba(128,140,160,.3)); background: transparent; color: var(--dsw-alias-label-tertiary); font-size: 10px; font-weight: 500; line-height: 15px; cursor: pointer; user-select: none; }",
+        ".mg-tt-subtog:hover { color: var(--dsw-alias-label-secondary); border-color: var(--dsw-alias-border-l3, rgba(128,140,160,.45)); }",
+        ".mg-tt-subtog.on { background: var(--dsw-alias-state-business-tertiary); border-color: transparent; color: var(--dsw-alias-state-business-primary); }",
+        ".mg-tt-subtog input { margin: 0; width: 12px; height: 12px; flex: none; accent-color: var(--dsw-alias-state-business-primary); cursor: pointer; }",
+        ".mg-subhelp { position: fixed; z-index: 1102; padding: 8px 10px; border-radius: 10px; background: var(--dsw-specific-tip); box-shadow: var(--dsw-elevation-prominent, var(--dsw-shadow-lv3)); --dsw-elevation-stroke-color: var(--dsw-alias-border-l1); color: var(--dsw-alias-label-secondary); font-size: 11px; line-height: 16px; }",
+        ".mg-subhelp strong { color: var(--dsw-alias-label-primary); font-weight: 600; }",,
         // "Local" badge — shown only for a model served from a loopback/LAN endpoint.
         ".mg-tt-local { display: inline-block; margin-top: 7px; padding: 1px 6px; border-radius: 6px; background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-state-business-primary); font-size: 10px; font-weight: 500; line-height: 15px; }",
         // Deprecation / subscription badges sit next to the name.
         ".mg-tt-status { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: var(--dsw-alias-interactive-bg-hover-danger, rgba(224,80,80,.15)); color: var(--dsw-alias-state-error-primary); font-size: 10px; font-weight: 500; line-height: 15px; }",
         ".mg-tt-sub { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-state-business-primary); font-size: 10px; font-weight: 500; line-height: 15px; }",
-        ".mg-tt-id { font-family: var(--ds-font-family-code); font-size: 10.5px; color: var(--dsw-alias-label-tertiary); margin: 0 0 6px; word-break: break-all; }",
+        ".mg-tt-id { font-family: var(--ds-font-family-code, var(--dsh-font-family-code, ui-monospace, monospace)); font-size: 10.5px; color: var(--dsw-alias-label-tertiary); margin: 0 0 6px; word-break: break-all; }",
         ".mg-tt-desc { color: var(--dsw-alias-label-secondary); margin-bottom: 6px; }",
         ".mg-tt-row { font-size: 10.5px; color: var(--dsw-alias-label-tertiary); }",
+        ".mg-tt-sec { margin: 9px 0 1px; padding-bottom: 2px; font-size: 9.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dsw-alias-label-tertiary); border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.16)); }",
+        ".mg-tt-grid > .mg-tt-sec:first-child { margin-top: 2px; }",
         // Detail sections: hairline-separated groups of fact rows; the
         // key/value grid keeps keys at caption weight and wraps long values.
-        ".mg-tt-grid { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; align-items: baseline; }",
-        ".mg-tt-skel { grid-column: 1; font-size: 10.5px; color: var(--dsw-alias-label-dimmed); white-space: nowrap; }",
-        ".mg-tt-val { grid-column: 2; min-width: 0; word-break: break-word; color: var(--dsw-alias-label-secondary); }",
-        ".mg-tt-val strong { font-weight: 500; color: var(--dsw-alias-label-primary); }",
+        ".mg-tt-grid { display: flex; flex-direction: column; margin-top: 2px; }",
+        ".mg-tt-head { display: grid; grid-template-columns: 96px minmax(0, 1fr); column-gap: 12px; padding: 1px 0 4px; border-bottom: 1px solid var(--dsw-alias-border-l2, rgba(128,140,160,.3)); font-size: 9.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dsw-alias-label-caption); }",
+        ".mg-tt-r { display: grid; grid-template-columns: 96px minmax(0, 1fr); column-gap: 12px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.16)); }",
+        ".mg-tt-k { min-width: 0; font-size: 11px; line-height: 15px; color: var(--dsw-alias-label-tertiary); overflow: hidden; text-overflow: ellipsis; }",
+        ".mg-tt-v { min-width: 0; font-size: 11.5px; line-height: 15px; word-break: break-word; color: var(--dsw-alias-label-primary); }",
+        ".mg-tt-v strong { font-weight: 600; color: var(--dsw-alias-label-primary); }",
         ".mg-tt-sep { grid-column: 1 / -1; margin: 6px 0 4px; border-top: 1px solid var(--dsw-alias-border-l1, rgba(128,140,160,.18)); }",
-        // Sub-agent default row: the checkbox lives INSIDE the tip card, so the
-        // pointer can reach it; a Hint line explains the consequence.
-        ".mg-tt-subagent { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; padding: 7px 8px; border-radius: 8px; background: var(--dsw-alias-interactive-bg-hover); cursor: pointer; }",
-        ".mg-tt-subagent:hover { background: var(--dsw-alias-interactive-bg-hover-active, var(--dsw-alias-interactive-bg-hover)); }",
-        ".mg-tt-subagent input { margin: 2px 0 0; width: 13px; height: 13px; flex: none; accent-color: var(--dsw-alias-state-business-primary); cursor: pointer; pointer-events: auto; }",
-        ".mg-tt-subagent-label { flex: 1 1 auto; min-width: 0; font-size: 11.5px; line-height: 16px; color: var(--dsw-alias-label-primary); }",
-        ".mg-tt-subagent-hint { display: block; margin-top: 2px; font-size: 10.5px; line-height: 15px; color: var(--dsw-alias-label-tertiary); word-break: break-word; }",
         // Sources footer: honest provenance of the card (which slice spoke).
         ".mg-tt-src { margin-top: 7px; font-size: 10px; color: var(--dsw-alias-label-dimmed); word-break: break-word; }",
-        ".mg-tt-code { font-family: var(--ds-font-family-code); font-size: 10px; }",
+        ".mg-tt-code { font-family: var(--ds-font-family-code, var(--dsh-font-family-code, ui-monospace, monospace)); font-size: 10px; }",
       ].join("\n");
-      document.head.appendChild(tag);
+      if (existingCss === null) document.head.appendChild(tag);
     }
 
     // ---- Favorites + collapsed state: localStorage, memoized per page ----
@@ -444,13 +502,19 @@ window.__ModuleLoader__.load({
     // Local models (e.g. llama.cpp / Ollama-style gateways) are NOT in the
     // public catalog, so they get no price; hosted providers (openrouter,
     // deepseek, openai, ...) show $input/$output per 1M tokens.
-    const PRICE_KEY = "dsh.modelgarden.prices";
+    const PRICE_KEY = "dsh.modelgarden.prices.v5"; // v5 adds filterable detail fields
     const PRICE_URL = "https://models.dev/api.json";
     const PRICE_TTL = 86400000; // refresh at most once per day
     const PRICE_RETRY = 30000; // after a failed fetch wait 30s before retrying
     // Auto model-list update: re-load the provider/model directory while the
     // picker is mounted so newly added models appear without reopening.
-    const MODEL_LIST_REFRESH_MS = 5 * 60 * 1000; // every 5 minutes
+    const MODEL_LIST_REFRESH_MS = 5 * 60 * 1000; // directory re-read: every 5 min
+    // Automatic provider sync: adds newly served models without ever dropping
+    // configured ones, so it is safe to run unattended. Prompt when the last
+    // pass is old, then once per hour while the picker stays open.
+    const AUTO_REFRESH_MS = 60 * 60 * 1000;
+    const AUTO_REFRESH_STALE_MS = 6 * 60 * 60 * 1000;
+    const AUTO_REFRESH_KEY = "dsh.modelgarden.lastAutoRefresh";
     let priceMap = null; // { "provider::model": { input?, output?, cacheRead?, cacheWrite?, context?, maxOutput? } }
     let pricesFailedAt = 0;
 
@@ -481,7 +545,7 @@ window.__ModuleLoader__.load({
       if (c && typeof c.at === "number") {
         const mins = Math.max(0, Math.round((Date.now() - c.at) / 60000));
         const age = mins < 60 ? mins + " min" : Math.round(mins / 60) + " h";
-        return "prices: models.dev · " + age + " ago";
+        return "models.dev · " + age;
       }
       return "prices: models.dev";
     }
@@ -626,6 +690,49 @@ window.__ModuleLoader__.load({
                   if (typeof lim.context === "number") entry.context = lim.context;
                   if (typeof lim.output === "number") entry.maxOutput = lim.output;
                 }
+                // Display name + lifecycle state: the catalog knows the
+                // presentable name ("MiniMax-M2.7") and marks retired models;
+                // the configured route often only carries the raw id.
+                if (typeof m.name === "string" && m.name !== "") entry.name = m.name;
+                if (typeof m.status === "string" && m.status.toLowerCase() === "deprecated") entry.deprecated = true;
+                // Everything the detail card shows, flattened into one
+                // lowercase blob: the search field covers the model's FACTS
+                // (capabilities, modalities, lifecycle), not only its name.
+                const kw = [];
+                const mod = m.modalities;
+                if (mod && typeof mod === "object") {
+                  if (Array.isArray(mod.input)) for (const v of mod.input) if (typeof v === "string") kw.push(v);
+                  if (Array.isArray(mod.output)) for (const v of mod.output) if (typeof v === "string") kw.push(v);
+                }
+                if (m.tool_call === true) kw.push("tool calling", "tools", "function calling");
+                if (m.structured_output === true) kw.push("structured output", "json schema");
+                if (m.temperature === true) kw.push("temperature");
+                if (m.attachment === true) kw.push("attachments", "files");
+                if (m.open_weights === true) kw.push("open weights");
+                if (m.reasoning === true) kw.push("reasoning", "thinking", "chain of thought");
+                if (typeof m.knowledge === "string" && m.knowledge !== "") kw.push("knowledge " + m.knowledge);
+                if (typeof m.release_date === "string" && m.release_date !== "") kw.push("released " + m.release_date);
+                if (typeof m.family === "string" && m.family !== "") kw.push(m.family);
+                if (entry.deprecated === true) kw.push("deprecated", "retired");
+                if (kw.length > 0) entry.kw = kw.join(" ").toLowerCase();
+                // Structured twins of the same facts, for the capability
+                // filters in the advanced search card.
+                entry.flags = {
+                  vision: Array.isArray(mod && mod.input)
+                    && mod.input.some((v) => typeof v === "string" && v.toLowerCase() === "image"),
+                  tools: m.tool_call === true,
+                  openWeights: m.open_weights === true,
+                  reasoning: m.reasoning === true,
+                  structured: m.structured_output === true,
+                  attachments: m.attachment === true,
+                  temperature: m.temperature === true,
+                  interleaved: typeof m.interleaved === "object" && m.interleaved !== null,
+                };
+                // Structured lifecycle/family fields, so the advanced panel can
+                // filter on exactly what the detail card shows.
+                if (typeof m.family === "string" && m.family !== "") entry.family = m.family;
+                if (typeof m.knowledge === "string" && m.knowledge !== "") entry.knowledge = m.knowledge;
+                if (typeof m.release_date === "string" && m.release_date !== "") entry.release = m.release_date;
                 if (Object.keys(entry).length) map[pid + "::" + mid] = entry;
               }
             }
@@ -712,6 +819,15 @@ window.__ModuleLoader__.load({
     const DETAIL_TTL = 86400000; // 24 h, mirroring the host's models.dev TTL
     let detailMap = null; // "provider::model" -> { at, detail }
     const detailInflight = new Map();
+    /**
+     * Forget every cached detail slice. Called after a model-list refresh: the
+     * catalog behind "deprecated", names and capabilities has just changed
+     * server-side, so a stale card must not keep describing the old state.
+     */
+    function invalidateDetailCache() {
+      detailMap = {};
+      try { globalThis.localStorage.removeItem(DETAIL_KEY); } catch {}
+    }
 
     function loadDetailCache() {
       try {
@@ -811,6 +927,115 @@ window.__ModuleLoader__.load({
           if (typeof onDone === "function") onDone();
         });
     }
+    /**
+     * Where the detail card goes for a given picker rect.
+     *
+     * With a wide left gutter the card parks BESIDE the picker (right edge on
+     * the seam, bottom edge on the picker's) and shrinks with the gutter. On a
+     * narrow window that gutter cannot hold a readable card, so it moves ABOVE
+     * the picker at the picker's width instead of hanging off the left edge —
+     * the "at small resolutions nothing is visible" failure.
+     *
+     * @param panel - the picker's viewport rect `{left, top, bottom, width}`.
+     * @returns inline style for the fixed card (pixels and clamped sizes).
+     */
+    function tipGeometry(panel) {
+      const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
+      const vh = typeof window === "undefined" ? 800 : window.innerHeight;
+      if (panel === undefined || panel === null) {
+        return { left: "8px", bottom: "8px", maxWidth: "360px", maxHeight: "440px" };
+      }
+      const room = Math.floor(panel.left) - 8;
+      if (room >= 200) {
+        const width = Math.min(360, room);
+        const maxHeight = Math.max(180, Math.min(440, Math.round(panel.bottom) - 12));
+        return {
+          right: Math.max(1, vw - Math.round(panel.left) + 1) + "px",
+          bottom: Math.max(8, vh - Math.round(panel.bottom)) + "px",
+          width: width + "px",
+          maxWidth: width + "px",
+          minWidth: Math.min(240, width) + "px",
+          maxHeight: maxHeight + "px",
+        };
+      }
+      const width = Math.min(340, Math.round(panel.width));
+      // Above the picker: the card may use only the room between the window
+      // top and the picker (minus the 8px seam), never more.
+      const maxHeight = Math.max(80, Math.min(440, Math.round(panel.top) - 24));
+      return {
+        left: Math.round(panel.left) + "px",
+        bottom: Math.max(8, vh - Math.round(panel.top) + 8) + "px",
+        width: width + "px",
+        maxWidth: width + "px",
+        maxHeight: maxHeight + "px",
+      };
+    }
+
+    /**
+     * Strength rank of one reasoning-effort id. Adapters name their levels
+     * freely ("low"/"high", "minimal", "xhigh", "max", numeric 1..5); the
+     * rank lets the picker default to the DEEPEST level a model offers
+     * instead of whatever order the adapter happened to list.
+     * @returns the rank, or null for a name this table does not know.
+     */
+    function effortStrength(id) {
+      const key = String(id).toLowerCase().replace(/[\s_-]+/g, "");
+      const ranks = {
+        none: 0, off: 0, disabled: 0, false: 0,
+        minimal: 1, min: 1,
+        low: 2, light: 2,
+        medium: 3, mid: 3, normal: 3, standard: 3,
+        high: 4, strong: 4,
+        xhigh: 5, veryhigh: 5, higher: 5,
+        max: 6, maximum: 6, extreme: 6,
+        ultra: 7,
+      };
+      if (Object.prototype.hasOwnProperty.call(ranks, key)) return ranks[key];
+      const n = Number(key);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    /**
+     * Normalize `reasoning.efforts` into `[{ id, name }]`.
+     * Accepts `[{id,name}]`, `["low","high"]` and numbers; drops entries
+     * without an id so a malformed list can never render a blank option.
+     */
+    function normalizeEfforts(raw) {
+      if (!Array.isArray(raw)) return [];
+      const out = [];
+      for (const e of raw) {
+        if (typeof e === "string" || typeof e === "number") {
+          out.push({ id: String(e), name: String(e) });
+        } else if (e && typeof e === "object") {
+          const id = e.id !== undefined && e.id !== null ? String(e.id)
+            : (e.name !== undefined && e.name !== null ? String(e.name) : "");
+          if (id === "") continue;
+          out.push({ id: id, name: e.name !== undefined && e.name !== null ? String(e.name) : id });
+        }
+      }
+      return out;
+    }
+
+    /**
+     * The deepest declared effort. Known ranks decide; a list made only of
+     * unknown names falls back to its last entry (adapters list ascending).
+     * @returns {{id: string, name: string} | null}
+     */
+    function strongestEffort(list) {
+      if (!Array.isArray(list) || list.length === 0) return null;
+      let best = null;
+      let bestScore = -Infinity;
+      let known = 0;
+      for (const item of list) {
+        const score = effortStrength(item.id);
+        if (score === null) continue;
+        known++;
+        if (score >= bestScore) { bestScore = score; best = item; }
+      }
+      if (known > 0) return best;
+      return list[list.length - 1];
+    }
+
     // Ensure the state was read at least once; fires fn on this tick or after
     // the fetch, so the checkbox shows the truth as soon as it exists.
     function ensureSubagentState(fn) {
@@ -946,6 +1171,29 @@ window.__ModuleLoader__.load({
           // liveOnly: local providers show ONLY models currently live on
           // their API (configured but stale entries are hidden).
           const [liveOnly, setLiveOnly] = React.useState(false);
+          // Retired models only — the quickest way to review & prune them.
+          const [deprecatedOnly, setDeprecatedOnly] = React.useState(false);
+          // Provider scope: a MULTI-select list (empty = every visible provider).
+          const [providerSel, setProviderSel] = React.useState([]);
+          // Capability filters mirror the detail card: vision, tools, etc.
+          const [caps, setCaps] = React.useState({
+            vision: false, tools: false, reasoning: false, openWeights: false,
+            structured: false, attachments: false, temperature: false, interleaved: false,
+          });
+          const capsActive = caps.vision || caps.tools || caps.reasoning || caps.openWeights
+            || caps.structured || caps.attachments || caps.temperature || caps.interleaved;
+          // Numeric / enumerated detail filters (the card's Context, Price,
+          // Knowledge, Family and Efforts rows).
+          const [levelsOnly, setLevelsOnly] = React.useState(false);
+          const [ctxMin, setCtxMin] = React.useState(0);
+          const [priceMax, setPriceMax] = React.useState(0);
+          const [knowledgeMin, setKnowledgeMin] = React.useState("");
+          const [familySel, setFamilySel] = React.useState("");
+          const detailFilterActive = levelsOnly || ctxMin > 0 || priceMax > 0 || knowledgeMin !== "" || familySel !== "";
+          // Advanced filters card: a SECOND floating card above the picker,
+          // positioned from the picker's own rect so the two stay aligned.
+          const [advOpen, setAdvOpen] = React.useState(false);
+          const [advRect, setAdvRect] = React.useState(null);
           // Live gateway inventory: { providers: { "<id>": { models?: string[], error?: string } } }
           const [serverModels, setServerModels] = React.useState(null);
           function fetchServerModels() {
@@ -978,6 +1226,114 @@ window.__ModuleLoader__.load({
           const [refreshResult, setRefreshResult] = React.useState(null); // { summary, results?, error? }
           // Hidden-models/providers settings popup (⚙ in the search row).
           const [hideOpen, setHideOpen] = React.useState(false);
+          // Deprecated-model removal: the red cross asks for confirmation and
+          // then deletes the model from the provider's configured list (a real
+          // config write, not the local hide toggle).
+          const [depConfirm, setDepConfirm] = React.useState(null); // "provider::model"
+          const [depBusy, setDepBusy] = React.useState(false);
+          const [depError, setDepError] = React.useState(null);
+          // A confirmation must not linger forever: auto-cancel after 8 s.
+          React.useEffect(() => {
+            if (depConfirm === null) return;
+            const id = globalThis.setTimeout(() => {
+              setDepConfirm(null);
+              setDepError(null);
+            }, 8000);
+            return () => globalThis.clearTimeout(id);
+          }, [depConfirm]);
+          function requestRemove(g, m) {
+            if (depBusy) return;
+            setDepBusy(true);
+            setDepError(null);
+            globalThis.fetch("/model-garden/remove-model", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ provider: g.id, model: m.id }),
+            })
+              .then(function (r) {
+                return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, d: d }; });
+              })
+              .then(function (res) {
+                setDepBusy(false);
+                if (!res.ok) {
+                  setDepError((res.d && res.d.error) || "could not remove the model");
+                  return;
+                }
+                setDepConfirm(null);
+                if (typeof props.load === "function") props.load();
+                setUiTick(function (t) { return t + 1; });
+              })
+              .catch(function (err) {
+                setDepBusy(false);
+                setDepError(String(err && err.message ? err.message : err));
+              });
+          }
+          // Background sync (see AUTO_REFRESH_*). Strictly additive: the
+          // request carries keepRemoved=1, so a provider that momentarily
+          // answers with a short list can never delete configuration.
+          function runAutoRefresh() {
+            globalThis.fetch("/model-garden/refresh-models?keepRemoved=1", { method: "POST" })
+              .then(function (r) {
+                return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, d: d }; });
+              })
+              .then(function (res) {
+                if (!res.ok || !res.d || res.d.error) return;
+                try { globalThis.localStorage.setItem(AUTO_REFRESH_KEY, String(Date.now())); } catch {}
+                const changed = Array.isArray(res.d.results)
+                  && res.d.results.some(function (x) { return x !== null && x !== undefined && x.changed === true; });
+                // Names/prices come from the same catalog: re-read it when the
+                // list changed, so renamed models show up without a reload.
+                if (changed) {
+                  invalidateDetailCache();
+                  fetchPrices().then(function () { setUiTick(function (t) { return t + 1; }); });
+                }
+                if (changed && typeof props.load === "function") props.load();
+                setUiTick(function (t) { return t + 1; });
+              })
+              .catch(function () { /* offline: the next cycle retries */ });
+          }
+          const autoRefreshRef = React.useRef(runAutoRefresh);
+          autoRefreshRef.current = runAutoRefresh;
+          React.useEffect(() => {
+            if (!open) return;
+            let last = 0;
+            try { last = Number(globalThis.localStorage.getItem(AUTO_REFRESH_KEY)) || 0; } catch {}
+            if (Date.now() - last > AUTO_REFRESH_STALE_MS) autoRefreshRef.current();
+            const id = globalThis.setInterval(function () {
+              if (globalThis.document && globalThis.document.hidden) return;
+              autoRefreshRef.current();
+            }, AUTO_REFRESH_MS);
+            return function () { globalThis.clearInterval(id); };
+          }, [open]);
+          // Advanced filters card: a sibling floating card directly ABOVE the
+          // picker, sized like it. Geometry is recomputed on open and resize so
+          // it stays glued to the panel instead of guessing an offset.
+          React.useEffect(() => {
+            if (!advOpen) return;
+            const place = function () {
+              const panel = panelRef.current;
+              if (!panel) return;
+              const r = panel.getBoundingClientRect();
+              const vh = typeof window === "undefined" ? 800 : window.innerHeight;
+              setAdvRect({
+                left: r.left,
+                width: r.width,
+                // 1px seam onto the picker, exactly like the detail card sits
+                // beside it — the two surfaces read as one stack.
+                bottom: Math.max(1, vh - r.top + 1),
+                // Never taller than the room above the picker: with many
+                // providers the card scrolls instead of clipping at the
+                // viewport top.
+                // Same rule as the detail card: never taller than the room
+                // between the window top and the picker.
+                maxHeight: Math.max(80, Math.min(470, Math.round(r.top) - 24)),
+              });
+            };
+            place();
+            globalThis.addEventListener("resize", place);
+            return function () { globalThis.removeEventListener("resize", place); };
+          }, [advOpen, open]);
+
           function runRefreshModels() {
             setRefreshBusy(true);
             setRefreshResult(null);
@@ -996,6 +1352,9 @@ window.__ModuleLoader__.load({
               })
               .then(function (out) {
                 if (out.ok && out.d) {
+                  // The catalog behind names/status moved: the cached detail
+                  // cards describe the previous state, so drop them.
+                  invalidateDetailCache();
                   setRefreshResult(out.d);
                 } else if (!out.ok && out.d && out.d.error) {
                   setRefreshResult({ error: out.d.error });
@@ -1029,6 +1388,10 @@ window.__ModuleLoader__.load({
           const [sortDir, setSortDir] = React.useState("asc");
           const [, setUiTick] = React.useState(0);
           const [tip, setTip] = React.useState(null); // {g, m, left, top} | null
+          // Small explanation tile above the detail card, opened by hovering
+          // the sub-agent toggle in the card's header.
+          const [subHelp, setSubHelp] = React.useState(null);
+          const tipRef = React.useRef(null);
           // Last model-switch failure. Rendered INSIDE the panel, which stays
           // open on failure — a rejected select must never look like success.
           const [selectError, setSelectError] = React.useState(null);
@@ -1044,6 +1407,13 @@ window.__ModuleLoader__.load({
           // "no row highlighted yet", so the first ArrowDown lands on the top
           // row instead of jumping past it.
           const [activeIdx, setActiveIdx] = React.useState(-1);
+          // TRUE only while the cursor is driven by the keyboard: only then may
+          // the list scroll itself. Hovering a visible row never needs to scroll,
+          // and the old unconditional scrollIntoView also scrolled the CHAT
+          // scrollport, which moved the composer (and with it the panel) under
+          // the pointer — the picker appeared to close on its own.
+          const keyboardNavRef = React.useRef(false);
+          const searchRef = React.useRef(null);
 
           const locked = props.locked === true || props.available === false;
           const groups = state === null || state.groups === undefined ? [] : state.groups;
@@ -1058,11 +1428,11 @@ window.__ModuleLoader__.load({
           // it). Without a declared default the pick omits `reasoningEffort`
           // entirely and the adapter decides — exactly like the native picker.
           function startEffort(m) {
-            const r = m && m.reasoning;
-            if (!r) return "";
-            const def = r.defaultEffort;
-            if (def !== undefined && def !== null && def !== "") return String(def);
-            return "";
+            // Deepest level the model declares. The picker deliberately does
+            // NOT fall back to the adapter's `defaultEffort`: "the strongest
+            // thinking this model can do" is the requested default.
+            const best = strongestEffort(normalizeEfforts(m && m.reasoning && m.reasoning.efforts));
+            return best === null ? "" : best.id;
           }
 
           // Reasoning info of the currently selected model. The trigger label
@@ -1087,29 +1457,34 @@ window.__ModuleLoader__.load({
           // without the Array.isArray guard a non-array threw on `.map` below,
           // and a string list produced `v = "undefined"` — a blank label that
           // sent `reasoningEffort: "undefined"` to the host.
+          const curDetail = current === null ? null : cachedDetail(current.provider, current.model);
           const currentEfforts = (function () {
-            const raw = curModelObj && curModelObj.reasoning && curModelObj.reasoning.efforts;
-            if (!Array.isArray(raw)) return [];
-            const out = [];
-            for (const e of raw) {
-              if (typeof e === "string" || typeof e === "number") {
-                out.push({ id: String(e), name: String(e) });
-              } else if (e && typeof e === "object") {
-                const id = e.id !== undefined && e.id !== null ? String(e.id)
-                  : (e.name !== undefined && e.name !== null ? String(e.name) : "");
-                if (id === "") continue;
-                out.push({ id: id, name: e.name !== undefined && e.name !== null ? String(e.name) : id });
-              }
-            }
-            return out;
+            // The directory usually carries the adapter's effort list; when a
+            // route reports it only through resolveModelInfo (detail), the
+            // cached card fills the gap so the dropdown still appears.
+            const fromModel = normalizeEfforts(curModelObj && curModelObj.reasoning && curModelObj.reasoning.efforts);
+            if (fromModel.length > 0) return fromModel;
+            return normalizeEfforts(curDetail && curDetail.reasoning && curDetail.reasoning.efforts);
           })();
           const currentEffort = (function () {
             if (current !== null && current.reasoningEffort !== undefined) return String(current.reasoningEffort);
-            // No explicit effort on the selection yet → mirror what picking this
-            // model would send (the adapter's default, else nothing at all).
-            if (curModelObj !== null) return startEffort(curModelObj);
-            return "";
+            // No explicit effort on the selection yet → mirror what picking
+            // this model would send: the strongest declared level.
+            const best = strongestEffort(currentEfforts);
+            return best === null ? "" : best.id;
           })();
+          // Nothing is known about the selected model's reasoning levels yet:
+          // pull its detail once so the dropdown appears without requiring a
+          // hover over the list.
+          React.useEffect(() => {
+            if (current === null || currentEfforts.length > 0) return;
+            ensureDetail(current.provider, current.model, () => setUiTick((t) => t + 1));
+          }, [
+            current === null ? null : String(current.provider),
+            current === null ? null : String(current.model),
+            currentEfforts.length,
+          ]);
+
           const currentLabel = current === null ? null : (String(current.model) || null);
           const q = query.trim().toLowerCase();
 
@@ -1154,19 +1529,28 @@ window.__ModuleLoader__.load({
             if (!g || !g.models) continue;
             if (providerHidden(String(g.id))) continue;
             // Whole providers can be blacklisted from the ⚙ hidden-settings
-            // popup — the group then vanishes entirely (models stay intact).
-            if (isHiddenProvider(String(g.id))) continue;
+            // popup: "All providers" keeps them out of the result (and out of
+            // the search), while an EXPLICIT selection from the filters card
+            // lets the user inspect one — that is the whole point of the
+            // hidden-provider section there.
+            const providerSelected = providerSel.indexOf(String(g.id)) !== -1;
+            // Hidden providers stay out unless the user ticks one explicitly.
+            if (isHiddenProvider(String(g.id)) && !providerSelected) continue;
+            if (providerSel.length > 0 && !providerSelected) continue;
             const live = liveMap[String(g.id)];
             for (const m of g.models) {
               // User-blacklisted model (✕ in its row / hidden-settings).
               if (isHiddenModel(g.id, m.id)) continue;
-              // Search covers the model name, its id and the description, PLUS
-              // the provider's display name and id — with 6 providers and 100+
-              // models, typing "byteplus" or "DeepSeek" should surface that
-              // provider's models even when the word is in no model name.
+              const cat = priceFor(g.id, m.id);
+              // Search covers the model name, its id and the description, the
+              // provider's name, AND the capabilities the detail card shows
+              // (modalities, tool calling, reasoning, open weights, family,
+              // knowledge cutoff, lifecycle) — so "vision", "tools",
+              // "deprecated" or "2025" find the right models.
               if (q !== "") {
                 const text = (m.name || "") + " " + (m.id || "") + " " +
-                  (m.description || "") + " " + (g.name || "") + " " + g.id;
+                  (m.description || "") + " " + (g.name || "") + " " + g.id + " " +
+                  (cat !== undefined && cat !== null && typeof cat.kw === "string" ? cat.kw : "");
                 if (text.toLowerCase().indexOf(q) === -1) continue;
               }
               if (favOnly && !hasFav(g.id, m.id)) continue;
@@ -1174,9 +1558,109 @@ window.__ModuleLoader__.load({
               // "Live" toggle: for providers with live inventory (local
               // gateways) keep only models the API currently serves.
               if (liveOnly && live !== undefined && !live.has(String(m.id))) continue;
+              if (deprecatedOnly) {
+                if (cat === undefined || cat === null || cat.deprecated !== true) continue;
+              }
+              const flags = cat !== undefined && cat !== null && cat.flags ? cat.flags : null;
+              if (caps.vision && !(flags && flags.vision)) continue;
+              if (caps.tools && !(flags && flags.tools)) continue;
+              if (caps.reasoning && !(flags && flags.reasoning)) continue;
+              if (caps.openWeights && !(flags && flags.openWeights)) continue;
+              if (caps.structured && !(flags && flags.structured)) continue;
+              if (caps.attachments && !(flags && flags.attachments)) continue;
+              if (caps.temperature && !(flags && flags.temperature)) continue;
+              if (caps.interleaved && !(flags && flags.interleaved)) continue;
+              // --- the detail card's numeric rows -------------------------
+              if (levelsOnly) {
+                const list = m.reasoning && Array.isArray(m.reasoning.efforts) ? m.reasoning.efforts : [];
+                if (list.length === 0) continue;
+              }
+              if (ctxMin > 0) {
+                const cw = contextFor(g.id, m.id);
+                if (cw === null || cw < ctxMin) continue;
+              }
+              if (priceMax > 0) {
+                const pin = cat !== undefined && cat !== null && typeof cat.input === "number" ? cat.input : null;
+                if (pin === null || pin > priceMax) continue;
+              }
+              if (knowledgeMin !== "") {
+                const kn = cat !== undefined && cat !== null && typeof cat.knowledge === "string" ? cat.knowledge : "";
+                if (kn === "" || Number(kn.slice(0, 4)) < Number(knowledgeMin)) continue;
+              }
+              if (familySel !== "") {
+                const fam = cat !== undefined && cat !== null && typeof cat.family === "string" ? cat.family : "";
+                if (fam !== familySel) continue;
+              }
               filtered.push({ g, m });
             }
           }
+          // Facets: every option carries the number of models it covers.
+          // Counts ignore the other filters (classic facet behaviour) so the
+          // numbers stay stable while the user narrows the list.
+          const providerFacets = (function () {
+            const out = [];
+            for (const g of groups) {
+              if (!g || !Array.isArray(g.models) || providerHidden(String(g.id))) continue;
+              let n = 0;
+              for (const m of g.models) if (!isHiddenModel(g.id, m.id)) n++;
+              out.push({
+                id: String(g.id),
+                name: g.name || String(g.id),
+                hidden: isHiddenProvider(String(g.id)),
+                count: n,
+              });
+            }
+            out.sort(function (a, b) {
+              if (a.hidden !== b.hidden) return a.hidden ? 1 : -1;
+              return a.name.localeCompare(b.name);
+            });
+            return out;
+          })();
+          const capFacets = (function () {
+            const acc = {
+              total: 0, local: 0, live: 0, fav: 0, deprecated: 0,
+              tools: 0, vision: 0, reasoning: 0, openWeights: 0,
+              structured: 0, attachments: 0, temperature: 0, interleaved: 0, levels: 0,
+              families: {}, years: {}, maxContext: 0, priced: 0,
+            };
+            for (const g of groups) {
+              if (!g || !Array.isArray(g.models) || providerHidden(String(g.id))) continue;
+              if (isHiddenProvider(String(g.id))) continue;
+              const live = liveMap[String(g.id)];
+              for (const m of g.models) {
+                if (isHiddenModel(g.id, m.id)) continue;
+                acc.total++;
+                const cat = priceFor(g.id, m.id);
+                if (localFor(g.id, m.id)) acc.local++;
+                if (live !== undefined && live.has(String(m.id))) acc.live++;
+                if (hasFav(g.id, m.id)) acc.fav++;
+                if (cat !== undefined && cat !== null && cat.deprecated === true) acc.deprecated++;
+                const flags = cat !== undefined && cat !== null && cat.flags ? cat.flags : null;
+                if (flags && flags.tools) acc.tools++;
+                if (flags && flags.vision) acc.vision++;
+                if (flags && flags.reasoning) acc.reasoning++;
+                if (flags && flags.openWeights) acc.openWeights++;
+                if (flags && flags.structured) acc.structured++;
+                if (flags && flags.attachments) acc.attachments++;
+                if (flags && flags.temperature) acc.temperature++;
+                if (flags && flags.interleaved) acc.interleaved++;
+                if (m.reasoning && Array.isArray(m.reasoning.efforts) && m.reasoning.efforts.length > 0) acc.levels++;
+                if (cat !== undefined && cat !== null && typeof cat.family === "string" && cat.family !== "") {
+                  acc.families[cat.family] = (acc.families[cat.family] || 0) + 1;
+                }
+                if (cat !== undefined && cat !== null && typeof cat.knowledge === "string" && cat.knowledge !== "") {
+                  const year = cat.knowledge.slice(0, 4);
+                  if (/^[0-9]{4}$/.test(year)) acc.years[year] = (acc.years[year] || 0) + 1;
+                }
+                if (cat !== undefined && cat !== null && typeof cat.input === "number") acc.priced++;
+                const ctx = contextFor(g.id, m.id);
+                if (typeof ctx === "number" && ctx > acc.maxContext) acc.maxContext = ctx;
+              }
+            }
+            return acc;
+          })();
+          const anyFacetActive = localOnly || liveOnly || favOnly || deprecatedOnly || providerSel.length > 0 || capsActive || detailFilterActive;
+
           function entrySortValue(c, field) {
             if (field === "context") return contextFor(c.g.id, c.m.id);
             const p = priceFor(c.g.id, c.m.id);
@@ -1217,7 +1701,7 @@ window.__ModuleLoader__.load({
           // and while sorted, where a flat ranked table has no place for a
           // pinned shortcut block.
           const recentVisible = (function () {
-            if (sortKey !== null || q !== "" || favOnly || localOnly || liveOnly) return [];
+            if (sortKey !== null || q !== "" || favOnly || localOnly || liveOnly || deprecatedOnly || providerSel.length > 0 || capsActive || detailFilterActive) return [];
             return recentRows(groups);
           })();
 
@@ -1250,7 +1734,7 @@ window.__ModuleLoader__.load({
           // (new search text, a filter toggle, a sort flip) — a stale index
           // would otherwise point at a different model or past the end.
           const navSig = navRows.length + ":" + q + ":" + sortKey + ":" + sortDir +
-            ":" + favOnly + ":" + localOnly + ":" + liveOnly;
+            ":" + favOnly + ":" + localOnly + ":" + liveOnly + ":" + deprecatedOnly + ":" + providerSel.join(",") + ":" + capsActive + ":" + detailFilterActive + ":" + ctxMin + ":" + priceMax + ":" + knowledgeMin + ":" + familySel;
           const navSigRef = React.useRef(navSig);
           if (navSigRef.current !== navSig) {
             navSigRef.current = navSig;
@@ -1289,6 +1773,7 @@ window.__ModuleLoader__.load({
               const inSearch = t && t.tagName === "INPUT";
               if (inSearch && (key === "Home" || key === "End")) return;
               e.preventDefault();
+              keyboardNavRef.current = true;
               setActiveIdx((prev) => {
                 if (key === "Home") return 0;
                 if (key === "End") return rows.length - 1;
@@ -1321,23 +1806,78 @@ window.__ModuleLoader__.load({
             if (!open || activeIdx < 0) return;
             const panel = panelRef.current;
             if (!panel) return;
-            const el = panel.querySelector('[data-mg-row="' + activeIdx + '"]');
-            if (el && typeof el.scrollIntoView === "function") {
-              el.scrollIntoView({ block: "nearest" });
+            // Scroll the list itself, never an ancestor: `scrollIntoView`
+            // walks every scrollable ancestor, and scrolling the conversation
+            // moved the composer out from under the pointer.
+            if (keyboardNavRef.current) {
+              const el = panel.querySelector('[data-mg-row="' + activeIdx + '"]');
+              const list = panel.querySelector(".mg-groups");
+              if (el && list) {
+                const rr = el.getBoundingClientRect();
+                const lr = list.getBoundingClientRect();
+                if (rr.top < lr.top) list.scrollTop -= (lr.top - rr.top);
+                else if (rr.bottom > lr.bottom) list.scrollTop += (rr.bottom - lr.bottom);
+              }
             }
             const row = navRowsRef.current[activeIdx];
             if (!row) return;
             setTip((prev) => {
               if (prev && prev.m === row.m && prev.g === row.g) return prev;
               const r = panel.getBoundingClientRect();
-              return { g: row.g, m: row.m, side: "left", top: r.top + 8,
-                       panelLeft: r.left, panelRight: r.right, maxW: Math.max(160, r.left - 16) };
+              // Same fixture geometry as the hover path: left gutter, bottom
+              // edge flush with the picker so it never jumps between rows.
+              return { g: row.g, m: row.m, panel: { left: r.left, top: r.top, bottom: r.bottom, width: r.width } };
             });
             // The mirrored card carries the SAME enrichment as the hovered one.
             cancelTipClose();
             ensureDetail(row.g.id, row.m.id, () => setUiTick((t) => t + 1));
             ensureSubagentState(() => setUiTick((t) => t + 1));
           }, [open, activeIdx]);
+
+          // The card is FIXED while the panel scrolls with the chat: re-derive
+          // its anchor on any scroll/resize so the 1px seam and the shared
+          // bottom edge survive the conversation moving.
+          const tipOpen = tip !== null;
+          React.useEffect(() => {
+            if (!tipOpen) return;
+            const place = function () {
+              const panel = panelRef.current;
+              if (!panel) return;
+              const r = panel.getBoundingClientRect();
+              setTip((prev) => (prev === null ? prev : {
+                ...prev,
+                panel: { left: r.left, top: r.top, bottom: r.bottom, width: r.width },
+              }));
+            };
+            globalThis.addEventListener("scroll", place, true);
+            globalThis.addEventListener("resize", place);
+            return function () {
+              globalThis.removeEventListener("scroll", place, true);
+              globalThis.removeEventListener("resize", place);
+            };
+          }, [tipOpen]);
+
+          // The gear popup shows sub-agent state; fetch it AFTER the render so
+          // the component never updates itself while rendering.
+          React.useEffect(() => {
+            if (!hideOpen) return;
+            ensureSubagentState(() => setUiTick((t) => t + 1));
+          }, [hideOpen]);
+
+          // Focus the search field WITHOUT letting the browser scroll any
+          // ancestor to reveal it: autoFocus does exactly that, and the nearest
+          // scrollable ancestor is the chat, which moved the composer (and the
+          // whole picker) under the user.
+          React.useEffect(() => {
+            if (!open) return;
+            const el = searchRef.current;
+            if (!el || typeof el.focus !== "function") return;
+            try {
+              el.focus({ preventScroll: true });
+            } catch {
+              el.focus();
+            }
+          }, [open]);
 
           React.useEffect(() => {
             if (!open && !effortOpen) return;
@@ -1480,6 +2020,7 @@ window.__ModuleLoader__.load({
           function closePanel(restoreFocus) {
             setOpen(false);
             setHideOpen(false);
+            setAdvOpen(false);
             cancelTipClose();
             setTip(null);
             setActiveIdx(-1);
@@ -1556,7 +2097,12 @@ window.__ModuleLoader__.load({
             // switch — which is a transient, retryable condition.
             noteRecent(g.id, m.id);
             const sel = { provider: g.id, model: m.id };
-            const eff = startEffort(m);
+            let eff = startEffort(m);
+            if (eff === "") {
+              const det = cachedDetail(g.id, m.id);
+              const best = strongestEffort(normalizeEfforts(det && det.reasoning && det.reasoning.efforts));
+              if (best !== null) eff = best.id;
+            }
             if (eff !== "") sel.reasoningEffort = eff;
             const done = () => { setSelectError(null); closePanel(); };
             if (typeof props.select !== "function") { done(); return; }
@@ -1613,29 +2159,22 @@ window.__ModuleLoader__.load({
               setSelectError("Could not set effort: " + (error && error.message ? error.message : String(error)));
             });
           }
-          // Tooltip opens BESIDE the panel, its RIGHT edge always flush
-          // against the panel's LEFT edge (anchored via style.right, so any
-          // tooltip width snaps to the same seam). Never flips over the chat
-          // text: when space left of the panel is tight the tooltip SHRINKS
-          // (maxWidth = available room) instead of switching sides. The
-          // right-edge fallback only fires when there is essentially no
-          // room left of the panel at all (< 180px).
+          // The detail card is a FIXTURE beside the picker, not a bubble that
+          // follows the hovered row: it always sits in the left gutter, shares
+          // the picker's BOTTOM edge (so the pair reads as one two-column
+          // sheet) and only shrinks when that gutter is narrow.
           function showTip(e, g, m) {
             const row = e.currentTarget;
-            const r = row.getBoundingClientRect();
             const panel = row.closest(".mg-panel");
-            const pr = panel ? panel.getBoundingClientRect() : r;
-            const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
-            const vh = typeof window === "undefined" ? 800 : window.innerHeight;
-            const top = Math.max(8, Math.min(r.top - 4, vh - 220));
-            const roomLeft = pr.left - 8; // keep an 8px viewport margin
-            const side = roomLeft >= 180 ? "left" : "right";
-            const maxW = side === "left" ? Math.min(320, Math.floor(roomLeft)) : 320;
+            const pr = panel ? panel.getBoundingClientRect() : row.getBoundingClientRect();
+            // The card is sized like the detail sheet (360 max) so the 106px
+            // label column leaves enough room for the values.
+
             // The detail card is INTERACTIVE (subagent checkbox) — closing is
             // delayed so the pointer can travel into the card, like the cost
             // popup. A cancel/schedule pair per open tip.
             cancelTipClose();
-            setTip({ g, m, panelLeft: pr.left, panelRight: pr.right, side, top, maxW });
+            setTip({ g, m, panel: { left: pr.left, top: pr.top, bottom: pr.bottom, width: pr.width } });
             ensureDetail(g.id, m.id, () => setUiTick((t) => t + 1));
             ensureSubagentState(() => setUiTick((t) => t + 1));
           }
@@ -1663,9 +2202,80 @@ window.__ModuleLoader__.load({
             cancelTipClose();
             setTip(null);
           }
+          // The help tile hangs ABOVE the detail card: it is measured from the
+          // card's live rect, so it follows the card wherever the room is.
+          function showSubHelp() {
+            const el = tipRef.current;
+            if (!el) return;
+            const r = el.getBoundingClientRect();
+            const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
+            const vh = typeof window === "undefined" ? 800 : window.innerHeight;
+            const width = Math.min(300, Math.max(220, Math.round(r.width)));
+            setSubHelp({
+              left: Math.max(8, Math.min(Math.round(r.left), vw - width - 8)),
+              bottom: Math.max(8, vh - Math.round(r.top) + 6),
+              width: width,
+            });
+          }
+          // A closed card must never leave its help tile floating.
+          React.useEffect(() => {
+            if (tip === null && subHelp !== null) setSubHelp(null);
+          }, [tip, subHelp]);
           function scheduleHideTip() {
             scheduleTipClose();
           }
+
+          /**
+           * One filter row: a real checkbox inside a label, so clicking the row
+           * toggles it and keyboard users get native behaviour for free.
+           */
+          /**
+           * One facet row: checkbox, label, and the number of models the
+           * option would match. The count column is what makes the card a
+           * chooser instead of a blind switchboard.
+           */
+          function facetRow(key, value, set, label, count, hint) {
+            return React.createElement("label", { key: "f:" + key, className: "mg-adv-row", title: hint },
+              React.createElement("input", {
+                type: "checkbox",
+                checked: value,
+                disabled: count === 0 && value !== true,
+                onChange: (e) => set(e.target.checked),
+              }),
+              React.createElement("span", { className: "mg-adv-label" }, label),
+              React.createElement("span", { className: "mg-adv-count" }, String(count))
+            );
+          }
+
+          /**
+           * One enumerated filter row: label left, native select taking the
+           * rest. Same geometry as the checkbox rows so the panel stays a
+           * table of options rather than a form.
+           */
+          function selectRow(key, label, value, set, options, hint) {
+            return React.createElement("label", { key: "s:" + key, className: "mg-adv-row mg-adv-selectrow", title: hint },
+              React.createElement("span", { className: "mg-adv-label" }, label),
+              React.createElement("select", {
+                className: "mg-adv-select",
+                value: value,
+                onChange: (e) => set(e.target.value),
+              }, options.map((o) => React.createElement("option", { key: o.value, value: o.value }, o.label)))
+            );
+          }
+
+          // The capability rows, derived from the catalog exactly like the
+          // counts: an option is rendered when it has matches (or is active),
+          // so another installation's catalog decides what the panel offers.
+          const CAPABILITY_DEFS = [
+            ["tools", "Tool calling", "Provides function calling"],
+            ["vision", "Vision", "Accepts image input"],
+            ["reasoning", "Reasoning", "Exposes reasoning / thinking"],
+            ["openWeights", "Open weights", "Weights are published"],
+            ["structured", "Structured output", "Supports JSON-schema output"],
+            ["attachments", "Attachments", "Accepts file attachments"],
+            ["temperature", "Temperature", "Exposes a temperature control"],
+            ["interleaved", "Interleaved", "Interleaves reasoning with the answer"],
+          ];
 
           function sortIndicator(key) {
             if (sortKey !== key) return null;
@@ -1680,10 +2290,22 @@ window.__ModuleLoader__.load({
             const cw = contextFor(g.id, m.id);
             const ctxt = cw === null ? "" : formatTokens(cw);
             const isActive = navIndex !== undefined && navIndex === activeIdx;
-            return React.createElement("button", {
+            // Lifecycle + presentable name come from the catalog: the
+            // configured route often stores only the raw id, and a retired
+            // model is worth flagging before it silently stops working.
+            const deprecated = entry !== null && entry !== undefined && entry.deprecated === true;
+            const label = m.name || (entry !== null && entry !== undefined && typeof entry.name === "string" && entry.name !== ""
+              ? entry.name
+              : m.id);
+            const pin = subagentActive();
+            const pinned = pin !== null && pin !== undefined
+              && String(pin.provider) === String(g.id) && String(pin.model) === String(m.id);
+            const rowKey = g.id + "::" + m.id;
+            const confirming = depConfirm === rowKey;
+            const row = React.createElement("button", {
               type: "button",
               key: "m:" + g.id + ":" + m.id,
-              className: "mg-model" + (isActive ? " active" : ""),
+              className: "mg-model" + (isActive ? " active" : "") + (deprecated ? " deprecated" : ""),
               role: "option",
               "aria-selected": isCurrent,
               ...(navIndex === undefined ? null : { "data-mg-row": navIndex, id: idPrefix + "-opt-" + navIndex }),
@@ -1692,6 +2314,7 @@ window.__ModuleLoader__.load({
               // pointer over a row moves the active index, so the highlight can
               // never sit on one row while the tooltip describes another.
               onMouseEnter: (e) => {
+                keyboardNavRef.current = false;
                 if (navIndex !== undefined && navIndex !== activeIdx) setActiveIdx(navIndex);
                 showTip(e, g, m);
               },
@@ -1701,7 +2324,11 @@ window.__ModuleLoader__.load({
             },
               React.createElement("span", { className: "mg-check" }, isCurrent ? "✓" : ""),
               React.createElement("span", { className: "mg-name" },
-                m.name || m.id,
+                label,
+                pinned && React.createElement("span", {
+                  className: "mg-pin",
+                  title: "Pinned as the default model for all subagents",
+                }, "sub"),
                 showProvider && React.createElement("span", { className: "mg-prov" }, " · " + (g.name || g.id))
               ),
               React.createElement("span", { className: "mg-ctx" }, ctxt),
@@ -1715,17 +2342,60 @@ window.__ModuleLoader__.load({
                 onClick: (e) => { e.stopPropagation(); toggleFav(g.id, m.id); setUiTick((t) => t + 1); },
                 onKeyDown: (e) => chipKey(e, () => { toggleFav(g.id, m.id); setUiTick((t) => t + 1); }),
               }, fav ? "★" : "☆"),
-              React.createElement("span", {
-                className: "mg-hide",
-                role: "button",
-                tabIndex: 0,
-                "aria-label": "Hide " + (m.name || m.id) + " from the list",
-                title: "Hide this model from the list (manage hidden in ⚙)",
-                onClick: (e) => { e.stopPropagation(); toggleHiddenModel(g.id, m.id); setUiTick((t) => t + 1); },
-                onKeyDown: (e) => chipKey(e, () => { toggleHiddenModel(g.id, m.id); setUiTick((t) => t + 1); }),
-              }, "✕")
+              deprecated
+                ? React.createElement("span", {
+                    className: "mg-remove",
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-label": "Remove deprecated model " + label + " from " + (g.name || g.id),
+                    title: "Deprecated — remove from this provider's configured list",
+                    onClick: (e) => {
+                      e.stopPropagation();
+                      setDepConfirm(confirming ? null : rowKey);
+                      setDepError(null);
+                    },
+                    onKeyDown: (e) => chipKey(e, () => { setDepConfirm(rowKey); setDepError(null); }),
+                  }, "✕")
+                : React.createElement("span", {
+                    className: "mg-hide",
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-label": "Hide " + label + " from the list",
+                    title: "Hide this model from the list (manage hidden in ⚙)",
+                    onClick: (e) => { e.stopPropagation(); toggleHiddenModel(g.id, m.id); setUiTick((t) => t + 1); },
+                    onKeyDown: (e) => chipKey(e, () => { toggleHiddenModel(g.id, m.id); setUiTick((t) => t + 1); }),
+                  }, "✕")
             );
+            if (!confirming) return row;
+            // Inline confirmation instead of a native dialog: the row stays
+            // visible, the question names both sides, and nothing else moves.
+            const question = React.createElement("div", { className: "mg-confirm", key: rowKey + ":c" },
+              React.createElement("span", { className: "mg-confirm-q" },
+                "Remove \u201c" + label + "\u201d from " + (g.name || g.id) + "?"),
+              depError !== null && React.createElement("span", { className: "mg-confirm-err" }, depError),
+              React.createElement("button", {
+                type: "button",
+                className: "mg-confirm-cancel",
+                onClick: (e) => { e.stopPropagation(); setDepConfirm(null); setDepError(null); },
+              }, "Cancel"),
+              React.createElement("button", {
+                type: "button",
+                className: "mg-confirm-ok",
+                disabled: depBusy,
+                onClick: (e) => { e.stopPropagation(); requestRemove(g, m); },
+              }, depBusy ? "Removing…" : "Remove")
+            );
+            return React.createElement(React.Fragment, { key: rowKey + ":wrap" }, row, question);
           }
+
+          // An installation without a models.dev catalog must not show filter
+          // groups that cannot match anything: headers follow their rows.
+          const hasCapabilityRows = CAPABILITY_DEFS.some(([key]) => capFacets[key] > 0 || caps[key])
+            || capFacets.levels > 0 || levelsOnly;
+          const hasLimitRows = capFacets.maxContext >= 32768 || ctxMin > 0
+            || Object.keys(capFacets.years).length > 0 || knowledgeMin !== ""
+            || capFacets.priced > 0 || priceMax > 0
+            || Object.keys(capFacets.families).length > 0 || familySel !== "";
 
           return React.createElement("div", { className: "mg-outer" + (open ? " open" : "") },
             React.createElement("div", { className: "mg-trigger-row" },
@@ -1804,7 +2474,8 @@ window.__ModuleLoader__.load({
               React.createElement("div", { className: "mg-search" },
                 React.createElement("input", {
                   type: "text",
-                  placeholder: "Search models…",
+                  ref: searchRef,
+                  placeholder: "Search models, capabilities…",
                   "aria-label": "Search models",
                   // The combobox semantics live HERE, on the element that
                   // actually holds DOM focus. aria-activedescendant only
@@ -1817,25 +2488,17 @@ window.__ModuleLoader__.load({
                   "aria-autocomplete": "list",
                   "aria-activedescendant": activeIdx >= 0 ? idPrefix + "-opt-" + activeIdx : undefined,
                   value: query,
-                  autoFocus: true,
                   onChange: (e) => setQuery(e.target.value),
                 }),
                 React.createElement("button", {
                   type: "button",
-                  className: "mg-local" + (localOnly ? " on" : ""),
-                  onClick: () => setLocalOnly(!localOnly),
-                  "aria-pressed": localOnly,
-                  title: localOnly ? "Show all models" : "Show only local models (Local: yes, no API price)",
-                }, "Local"),
-                React.createElement("button", {
-                  type: "button",
-                  className: "mg-local" + (liveOnly ? " on" : ""),
-                  onClick: () => setLiveOnly(!liveOnly),
-                  "aria-pressed": liveOnly,
-                  title: liveOnly
-                    ? "Show configured + live models"
-                    : "Local providers: show only models their API currently serves",
-                }, "Live"),
+                  className: "mg-local mg-filters" + ((localOnly || liveOnly || favOnly || deprecatedOnly || providerSel.length > 0 || capsActive || detailFilterActive) ? " on" : ""),
+                  onClick: () => setAdvOpen(!advOpen),
+                  "aria-pressed": advOpen,
+                  "aria-expanded": advOpen,
+                  "aria-haspopup": "dialog",
+                  title: "Filters: local, live, favorites, deprecated",
+                }, "Filters"),
                 React.createElement("button", {
                   type: "button",
                   className: "mg-local mg-refresh" + (refreshBusy ? " on" : ""),
@@ -1855,6 +2518,10 @@ window.__ModuleLoader__.load({
               // with a per-row "show" link + a "show all" reset. Overlays the
               // table (absolute inside the panel), so the table stays intact.
               hideOpen && (function () {
+                // A throw in this subtree would propagate through the slot's
+                // render and make the whole picker abdicate, so the popup
+                // degrades to a readable strip instead.
+                try {
                 const hidden = readHidden();
                 const provNames = {};
                 for (const g of groups) provNames[String(g.id)] = g.name || String(g.id);
@@ -1890,8 +2557,12 @@ window.__ModuleLoader__.load({
                 // Active sub-agent default, so the setting stays discoverable
                 // outside the hover card: which route::model is forced, or the
                 // inherit note. Clearing goes through the same POST channel.
+                // Read-only here: the async refresh lives in an effect below.
+                // Calling ensureSubagentState() during render fired setUiTick
+                // from inside the render phase, which React answers with
+                // "Too many re-renders" — the slot entry then abdicated and the
+                // native picker took the seat back (the picker "disappeared").
                 const active = subagentActive();
-                ensureSubagentState(() => setUiTick((t) => t + 1));
                 const subagentRow = active !== null
                   ? React.createElement("div", { key: "sa", className: "mg-hideitem" },
                       React.createElement("span", { className: "mg-hideitem-prov" }, "sub-agents → " + (provNames[active.provider] || active.provider) + " · " + active.model),
@@ -1937,6 +2608,10 @@ window.__ModuleLoader__.load({
                     modelRows.length > 0 ? modelRows : React.createElement("div", { className: "mg-hidepanel-empty" }, "none hidden")
                   )
                 );
+                } catch (err) {
+                  return React.createElement("div", { className: "mg-hidepanel" },
+                    "Could not read hidden settings: " + String(err && err.message ? err.message : err));
+                }
               })(),
 
               status === "loading" && React.createElement("div", { className: "mg-status" }, "Loading…"),
@@ -1961,67 +2636,12 @@ window.__ModuleLoader__.load({
                   title: "Dismiss",
                 }, "Dismiss")
               ),
-              (function () {
-                const cc = currentCost();
-                if (!cc || histErr) {
-                  return histErr
-                    ? React.createElement("div", { className: "mg-status" }, "cost endpoint unavailable")
-                    : null;
-                }
-                const label = !current
-                  ? "no model selected"
-                  : (current.model || current.provider || "model");
-                // Token usage is ALWAYS shown once the session has traffic;
-                // the cost figure depends on a (reference) price being known.
-                const detail = formatTokens(cc.inputTokens) + " in / " + formatTokens(cc.outputTokens) + " out" +
-                  ((cc.cacheReadTokens + cc.cacheWriteTokens) > 0
-                    ? " · " + formatTokens(cc.cacheReadTokens + cc.cacheWriteTokens) + " cache"
-                    : "");
-                if (!cc.hasPrice) {
-                  // No model used in this session has a (reference) price.
-                  const usedModels = (hist && Array.isArray(hist.models)) ? hist.models : [];
-                  const allLocal = usedModels.length > 0 && usedModels.every((m) => localFor(m.provider, m.model));
-                  const anySub = usedModels.some((m) => subscriptionFor(m.provider, m.model));
-                  const note = allLocal
-                    ? "local models → no API cost"
-                    : (anySub ? "subscription → no per-token price" : "no price data");
-                  return React.createElement("div", { className: "mg-cost" },
-                    React.createElement("span", null, note,
-                      React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
-                    )
-                  );
-                }
-                if (liveOnly && liveWarn.length > 0) {
-                  return React.createElement("div", null,
-                    React.createElement("div", { className: "mg-warn" },
-                      liveWarn.length + " gateway" + (liveWarn.length === 1 ? "" : "s") +
-                      " could not be listed — its configured models are hidden: " + liveWarn.join("; ")
-                    ),
-                    React.createElement("div", { className: "mg-cost" },
-                      React.createElement("span", null,
-                        React.createElement("span",
-                          Object.assign({ className: "mg-costbtn", title: "Hover: session cost breakdown" }, costHoverProps),
-                          line),
-                        React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
-                      )
-                    )
-                  );
-                }
-                const line = "approx cost: " + formatMoney(cc.total);
-                // The breakdown popup opens ONLY when hovering the cost
-                // figure itself — not the token detail or model label.
-                return React.createElement("div", { className: "mg-cost" },
-                  React.createElement("span", null,
-                    React.createElement("span",
-                      Object.assign({ className: "mg-costbtn", title: "Hover: session cost breakdown" }, costHoverProps),
-                      line),
-                    React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
-                  )
-                );
-              })(),
+
               filtered.length === 0 && !(status === "loading") && React.createElement("div", { className: "mg-empty" },
                 groups.length === 0 ? "No models available"
                   : favOnly ? "No favorites yet — star a model"
+                  : capsActive ? "No models with these capabilities"
+                  : deprecatedOnly ? "No deprecated models — nothing to prune"
                   : localOnly ? "No local models (all models have an API price)"
                   : (q === "" && hiddenCount() > 0 ? "All visible models hidden — open ⚙ to restore" : "No matching models")),
               // Recent shortcuts. Rendered as chips rather than rows: as rows
@@ -2110,7 +2730,7 @@ window.__ModuleLoader__.load({
                     );
                   })
               ),
-              React.createElement("div", { className: "mg-status", style: { display: "flex", justifyContent: "space-between", gap: "8px" } },
+              React.createElement("div", { className: "mg-status", style: { display: "flex", alignItems: "center", gap: "8px" } },
                 // While arrowing, the position replaces the plain count so the
                 // user can see where they are in a long list; without a cursor
                 // the count stands on its own.
@@ -2119,6 +2739,64 @@ window.__ModuleLoader__.load({
                     ? (activeIdx + 1) + " / " + navRows.length
                     : navRows.length + (navRows.length === 1 ? " model" : " models") +
                       (navRows.length !== filtered.length ? " (" + filtered.length + " match)" : "")),
+              (function () {
+                const cc = currentCost();
+                if (!cc || histErr) {
+                  return histErr
+                    ? React.createElement("div", { className: "mg-status" }, "cost endpoint unavailable")
+                    : null;
+                }
+                const label = !current
+                  ? "no model selected"
+                  : (current.model || current.provider || "model");
+                // Token usage is ALWAYS shown once the session has traffic;
+                // the cost figure depends on a (reference) price being known.
+                const detail = formatTokens(cc.inputTokens) + " in / " + formatTokens(cc.outputTokens) + " out" +
+                  ((cc.cacheReadTokens + cc.cacheWriteTokens) > 0
+                    ? " · " + formatTokens(cc.cacheReadTokens + cc.cacheWriteTokens) + " cache"
+                    : "");
+                if (!cc.hasPrice) {
+                  // No model used in this session has a (reference) price.
+                  const usedModels = (hist && Array.isArray(hist.models)) ? hist.models : [];
+                  const allLocal = usedModels.length > 0 && usedModels.every((m) => localFor(m.provider, m.model));
+                  const anySub = usedModels.some((m) => subscriptionFor(m.provider, m.model));
+                  const note = allLocal
+                    ? "local models → no API cost"
+                    : (anySub ? "subscription → no per-token price" : "no price data");
+                  return React.createElement("div", { className: "mg-cost" },
+                    React.createElement("span", null, note,
+                      React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
+                    )
+                  );
+                }
+                if (liveOnly && liveWarn.length > 0) {
+                  return React.createElement("div", null,
+                    React.createElement("div", { className: "mg-warn" },
+                      liveWarn.length + " gateway" + (liveWarn.length === 1 ? "" : "s") +
+                      " could not be listed — its configured models are hidden: " + liveWarn.join("; ")
+                    ),
+                    React.createElement("div", { className: "mg-cost" },
+                      React.createElement("span", null,
+                        React.createElement("span",
+                          Object.assign({ className: "mg-costbtn", title: "Hover: session cost breakdown" }, costHoverProps),
+                          line),
+                        React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
+                      )
+                    )
+                  );
+                }
+                const line = "approx cost: " + formatMoney(cc.total);
+                // The breakdown popup opens ONLY when hovering the cost
+                // figure itself — not the token detail or model label.
+                return React.createElement("div", { className: "mg-cost", title: line + " · " + detail + " · " + label },
+                  React.createElement("span", null,
+                    React.createElement("span",
+                      Object.assign({ className: "mg-costbtn", title: "Hover: session cost breakdown" }, costHoverProps),
+                      line),
+                    React.createElement("span", { className: "mg-cost-detail" }, " · " + detail + " · " + label)
+                  )
+                );
+              })(),
                 React.createElement("span", {
                   className: "mg-count",
                   style: refreshResult && refreshResult.error ? { color: "var(--dsw-alias-state-warn-label, #d29922)" } : undefined,
@@ -2141,17 +2819,121 @@ window.__ModuleLoader__.load({
               React.createElement("div", { className: "mg-hint" },
                 "↑↓ move · ↵ select · esc close")
             ),
+            advOpen && advRect && React.createElement("div", {
+              className: "mg-adv",
+              role: "dialog",
+              "aria-label": "Filters",
+              style: {
+                left: advRect.left + "px",
+                width: advRect.width + "px",
+                bottom: advRect.bottom + "px",
+                maxHeight: advRect.maxHeight + "px",
+              },
+            },
+              React.createElement("div", { className: "mg-adv-title" },
+                React.createElement("span", null, "Filters · " + filtered.length + " of " + capFacets.total),
+                // Always present: a reset that only appears once something is
+                // set is invisible exactly when the user looks for it. It stays
+                // dimmed until a filter is active.
+                React.createElement("button", {
+                  type: "button",
+                  className: "mg-adv-reset",
+                  disabled: !anyFacetActive,
+                  title: anyFacetActive ? "Clear every active filter" : "No filters active",
+                  onClick: () => {
+                    setLocalOnly(false);
+                    setLiveOnly(false);
+                    setFavOnly(false);
+                    setDeprecatedOnly(false);
+                    setProviderSel([]);
+                    setCaps({
+                      vision: false, tools: false, reasoning: false, openWeights: false,
+                      structured: false, attachments: false, temperature: false, interleaved: false,
+                    });
+                    setLevelsOnly(false);
+                    setCtxMin(0);
+                    setPriceMax(0);
+                    setKnowledgeMin("");
+                    setFamilySel("");
+                  },
+                }, "Reset")
+              ),
+              // Two columns: checkboxes on the left, enumerated limits and the
+              // provider list on the right — the full card stays visible above
+              // the picker instead of scrolling through one long stripe.
+              React.createElement("div", { className: "mg-adv-body" },
+                React.createElement("div", { className: "mg-adv-col" },
+                  React.createElement("div", { className: "mg-adv-sec" }, "Scope"),
+                  facetRow("local", localOnly, setLocalOnly, "Local only", capFacets.local, "Models on a loopback / LAN endpoint"),
+                  facetRow("live", liveOnly, setLiveOnly, "Live only", capFacets.live, "Local gateways: hide ids their API no longer serves"),
+                  facetRow("fav", favOnly, setFavOnly, "Favorites only", capFacets.fav, "Only starred models"),
+                  hasCapabilityRows && React.createElement("div", { className: "mg-adv-sec" }, "Capabilities"),
+                  CAPABILITY_DEFS.filter(([key]) => capFacets[key] > 0 || caps[key]).map(([key, label, hint]) =>
+                    facetRow("cap:" + key, caps[key], (v) => setCaps((c) => ({ ...c, [key]: v })), label, capFacets[key], hint)
+                  ),
+                  (capFacets.levels > 0 || levelsOnly) && facetRow("cap:lvl", levelsOnly, setLevelsOnly, "Effort levels", capFacets.levels, "Model declares reasoning levels (the composer dropdown)"),
+                ),
+                React.createElement("div", { className: "mg-adv-col" },
+                  hasLimitRows && React.createElement("div", { className: "mg-adv-sec" }, "Limits"),
+                  capFacets.maxContext >= 32768 && selectRow("ctx", "Context", String(ctxMin), (v) => setCtxMin(Number(v)),
+                    [{ value: "0", label: "Any" }].concat(
+                      [[32768, "\u2265 32K"], [131072, "\u2265 128K"], [262144, "\u2265 256K"],
+                       [524288, "\u2265 512K"], [1000000, "\u2265 1M"]]
+                        .filter(([size]) => size <= capFacets.maxContext)
+                        .map(([size, label]) => ({ value: String(size), label }))
+                    ), "Minimum context window"),
+                  (capFacets.priced > 0 || priceMax > 0) && selectRow("price", "Input price", String(priceMax), (v) => setPriceMax(Number(v)), [
+                    { value: "0", label: "Any" },
+                    { value: "0.5", label: "\u2264 $0.50" },
+                    { value: "1", label: "\u2264 $1" },
+                    { value: "3", label: "\u2264 $3" },
+                    { value: "10", label: "\u2264 $10" },
+                  ], "Maximum input price per 1M tokens"),
+                  (Object.keys(capFacets.years).length > 0 || knowledgeMin !== "") && selectRow("know", "Knowledge", knowledgeMin, setKnowledgeMin,
+                    [{ value: "", label: "Any" }].concat(
+                      Object.keys(capFacets.years)
+                        .sort((a, b) => Number(b) - Number(a))
+                        .map((year) => ({ value: year, label: year + "+" }))
+                    ), "Minimum knowledge cutoff year"),
+                  (Object.keys(capFacets.families).length > 0 || familySel !== "") && selectRow("fam", "Family", familySel, setFamilySel,
+                    [{ value: "", label: "Any" }].concat(Object.keys(capFacets.families).sort().map((f) => ({ value: f, label: f }))),
+                    "Model family from the catalog"),
+                  React.createElement("div", { className: "mg-adv-sec" }, "Lifecycle"),
+                  facetRow("dep", deprecatedOnly, setDeprecatedOnly, "Deprecated only", capFacets.deprecated, "Only models the catalog marks retired"),
+                  // One provider, chosen from a dropdown: picking an entry
+                  // closes the list (native select behaviour), so the card
+                  // stays compact however many providers are configured.
+                  (function () {
+                    const configured = providerFacets.filter((p) => !p.hidden);
+                    const hiddenOnes = providerFacets.filter((p) => p.hidden);
+                    const opt = (p) => React.createElement("option", {
+                      key: "pv:" + p.id,
+                      value: p.id,
+                    }, (p.name || p.id) + " (" + p.count + ")");
+                    return React.createElement("label", {
+                      className: "mg-adv-row mg-adv-selectrow",
+                      title: "Filter the list by one provider",
+                    },
+                      React.createElement("span", { className: "mg-adv-label" }, "Providers"),
+                      React.createElement("select", {
+                        className: "mg-adv-select",
+                        value: providerSel.length > 0 ? String(providerSel[0]) : "",
+                        onChange: (e) => setProviderSel(e.target.value === "" ? [] : [e.target.value]),
+                      },
+                        React.createElement("option", { value: "" }, "All providers"),
+                        configured.length > 0 && React.createElement("optgroup", { label: "Configured" }, configured.map(opt)),
+                        hiddenOnes.length > 0 && React.createElement("optgroup", { label: "Hidden" }, hiddenOnes.map(opt))
+                      )
+                    );
+                  })()
+                )
+              )
+            ),
             (function () {
               if (!tip || locked || !open) return null;
-              const vw = typeof window === "undefined" ? 1200 : window.innerWidth;
-              // left-anchored: right edge flush against the panel's left edge
-              // (1px seam); maxWidth/minWidth shrink the tooltip to the room
-              // available left of the panel instead of flipping sides.
-              const tipStyle = tip.side === "left"
-                ? { right: Math.max(1, vw - tip.panelLeft + 1), top: tip.top,
-                    maxWidth: tip.maxW, minWidth: Math.min(200, tip.maxW) }
-                : { left: Math.min(tip.panelRight + 1, Math.max(8, vw - 340)), top: tip.top,
-                    maxWidth: tip.maxW };
+              // Placement (left gutter, or above the picker when the window is
+              // too narrow for one) lives in tipGeometry().
+              const tipStyle = tipGeometry(tip.panel);
               // The card is interactive: pointer may travel into it (checkbox),
               // so leaving a row schedules the close instead of doing it.
               const tipHover = { onMouseEnter: () => cancelTipClose(), onMouseLeave: () => scheduleTipClose() };
@@ -2170,15 +2952,23 @@ window.__ModuleLoader__.load({
                 const num = function (n) { return typeof n === "number" && isFinite(n) ? n.toLocaleString() : "–"; };
                 function row(key, label, value) {
                   if (value === undefined || value === null) return;
-                  cells.push(
-                    React.createElement("div", { key: key + "k", className: "mg-tt-skel" }, label),
-                    React.createElement("div", {
-                      key: key + "v", className: "mg-tt-val" +
-                        (key === "g" ? " mg-tt-code" : ""),
-                    }, value),
-                  );
+                  cells.push(React.createElement("div", { key: "r:" + key, className: "mg-tt-r" },
+                    React.createElement("span", { className: "mg-tt-k" }, label),
+                    React.createElement("span", { className: "mg-tt-v" + (key === "g" ? " mg-tt-code" : "") }, value)
+                  ));
                 }
                 function yesNo(v) { return v === true ? "Yes" : v === false ? "No" : undefined; }
+                // Section headings: the card mixes adapter facts, catalog
+                // facts and gateway facts, and an unlabelled run of 15 key/value
+                // rows is hard to scan. A heading is only inserted when its
+                // section actually produced rows.
+                function sectionNode(key, label) {
+                  return React.createElement("div", { key: key + "s", className: "mg-tt-sec" }, label);
+                }
+                function withSection(start, key, label) {
+                  if (cells.length > start) cells.splice(start, 0, sectionNode(key, label));
+                }
+                const baseStart = cells.length;
                 // Context / max output / efforts — the ADAPTER's own numbers
                 // win over catalog guesses (detail.context already resolved it).
                 const ctxWin = contextFor(tip.g.id, tip.m.id);
@@ -2209,6 +2999,8 @@ window.__ModuleLoader__.load({
                 } else if (subscriptionFor(tip.g.id, tip.m.id)) {
                   row("pr", "Price", "Plan model (API reference price)");
                 }
+                withSection(baseStart, "m", "Model");
+                const capStart = cells.length;
                 if (detail !== null && typeof detail === "object") {
                   if (Array.isArray(detail.inputModalities) || Array.isArray(detail.outputModalities)) {
                     const mod = (detail.inputModalities || []).concat("→").concat(detail.outputModalities || []);
@@ -2228,6 +3020,8 @@ window.__ModuleLoader__.load({
                   row("att", "Attachments", yesNo(detail.attachment));
                   row("ow", "Open weights", yesNo(detail.openWeights));
                   if (detail.interleavedReasoning === true) row("il", "Interleaved", "Reasoning interleaved");
+                  withSection(capStart, "cap", "Capabilities");
+                  const lifeStart = cells.length;
                   if (detail.knowledgeCutoff) row("kn", "Knowledge", String(detail.knowledgeCutoff));
                   if (detail.releaseDate) row("rel", "Released", String(detail.releaseDate));
                   if (detail.lastUpdated && detail.lastUpdated !== detail.releaseDate) {
@@ -2241,12 +3035,14 @@ window.__ModuleLoader__.load({
                   if (detail.canonicalModelId && detail.canonicalModelId !== tip.m.id) {
                     row("cn", "Canonical", String(detail.canonicalModelId));
                   }
+                  withSection(lifeStart, "life", "Lifecycle");
+                  const provStart = cells.length;
                   if (detail.provider && typeof detail.provider === "object") {
                     const p = detail.provider;
                     const bits = [];
                     if (p.name) bits.push(String(p.name));
                     if (p.envKey) bits.push(p.envKey);
-                    if (bits.length) row("pv", "Provider (models.dev)", bits.join(" · "));
+                    if (bits.length) row("pv", "Provider", bits.join(" · "));
                   }
                   if (detail.gateway && typeof detail.gateway === "object") {
                     const gw = detail.gateway;
@@ -2267,18 +3063,39 @@ window.__ModuleLoader__.load({
                     ].filter(Boolean);
                     if (names.length) row("src", "Sources", names.join(" + "));
                   }
+                  withSection(provStart, "prov", "Provider");
                 }
                 return cells;
               })();
               const tipEl = React.createElement("div", Object.assign({
+                ref: tipRef,
                 className: "mg-tooltip",
                 style: tipStyle,
               }, tipHover),
                 React.createElement("div", { className: "mg-tt-name" },
-                  tip.m.name || tip.m.id,
-                  detail && detail.status === "deprecated"
-                    && React.createElement("span", { className: "mg-tt-status" }, "deprecated"),
-                  checked && React.createElement("span", { className: "mg-tt-sub" }, "sub-agent default")
+                  React.createElement("span", { className: "mg-tt-nametext" },
+                    tip.m.name || tip.m.id,
+                    detail && detail.status === "deprecated"
+                      && React.createElement("span", { className: "mg-tt-status" }, "deprecated")
+                  ),
+                  // The sub-agent default lives NEXT TO THE NAME: hover it for
+                  // the explanation tile, tick it to pin every future child.
+                  React.createElement("label", {
+                    className: "mg-tt-subtog" + (checked ? " on" : ""),
+                    title: "Use this model for all sub-agents",
+                    onMouseEnter: showSubHelp,
+                    onMouseLeave: () => setSubHelp(null),
+                    onClick: (e) => e.stopPropagation(),
+                  },
+                    React.createElement("input", {
+                      type: "checkbox",
+                      checked: checked,
+                      disabled: busy,
+                      onChange: (e) => toggleSubagentDefault(tip.g, tip.m, e.target.checked),
+                      onClick: (e) => e.stopPropagation(),
+                    }),
+                    React.createElement("span", null, "sub-agents")
+                  )
                 ),
                 tip.m.id !== tip.m.name && React.createElement("div", { className: "mg-tt-id" },
                   tip.g.id + "::" + tip.m.id),
@@ -2287,42 +3104,35 @@ window.__ModuleLoader__.load({
                 // detail. Base rows are instant (directory/price data), the
                 // enriched grid follows the detail fetch once per model.
                 (facts.length > 0 || detail !== null) && React.createElement("div", { className: "mg-tt-grid" },
+                  React.createElement("div", { className: "mg-tt-head" },
+                    React.createElement("span", null, "Property"),
+                    React.createElement("span", null, "Value")
+                  ),
                   facts,
-                  detail === null && React.createElement("div", { className: "mg-tt-skel" }, "Details"),
-                  detail === null && React.createElement("div", { className: "mg-tt-val" }, "…"),
-                ),
-                localFor(tip.g.id, tip.m.id) && React.createElement("span", { className: "mg-tt-local" }, "Local"),
-                // The checkbox BEHIND the card: make exactly this route::model
-                // the model EVERY future subagent runs with (parent sessions
-                // keep their own model). Persisted in the DSH settings
-                // document; the host enforces it at agents.create/resume.
-                React.createElement("label", { className: "mg-tt-subagent" },
-                  React.createElement("input", {
-                    type: "checkbox",
-                    checked,
-                    disabled: busy,
-                    onChange: (e) => toggleSubagentDefault(tip.g, tip.m, e.target.checked),
-                    onClick: (e) => e.stopPropagation(),
-                  }),
-                  React.createElement("span", { className: "mg-tt-subagent-label" },
-                    "Use for all sub-agents",
-                    React.createElement("span", { className: "mg-tt-subagent-hint" },
-                      "Every future subagent runs with this model — in any session, whatever the main session is set to."
-                    )
+                  detail === null && React.createElement("div", { className: "mg-tt-r" },
+                    React.createElement("span", { className: "mg-tt-k" }, "Details"),
+                    React.createElement("span", { className: "mg-tt-v" }, "…")
                   )
                 ),
-                subagentErr && React.createElement("div", { className: "mg-tt-row", style: { color: "var(--dsw-alias-state-error-primary)", marginTop: "6px" } },
-                  subagentErr)
+                localFor(tip.g.id, tip.m.id) && React.createElement("span", { className: "mg-tt-local" }, "Local"),
               );
               // Portal to <body>: the composer creates its own stacking
               // context, so an inline fixed tooltip loses against the chat
               // history no matter the z-index. Through the portal the
               // tooltip always floats above everything; it still closes on
               // mouse-leave / picker close like before.
+              const helpEl = subHelp === null ? null : React.createElement("div", {
+                className: "mg-subhelp",
+                style: { left: subHelp.left + "px", bottom: subHelp.bottom + "px", maxWidth: subHelp.width + "px" },
+              },
+                React.createElement("strong", null, "Use for all sub-agents"),
+                " — every future subagent runs this model: spawns, forks, background children and workflow agents, in any session, whatever the main session is set to. Untick to inherit the parent model again.",
+                subagentErr !== null && React.createElement("div", { style: { marginTop: "4px", color: "var(--dsw-alias-state-error-primary)" } }, subagentErr)
+              );
               if (ReactDOM && typeof document !== "undefined" && document.body) {
-                return ReactDOM.createPortal(tipEl, document.body);
+                return ReactDOM.createPortal(React.createElement(React.Fragment, null, tipEl, helpEl), document.body);
               }
-              return tipEl;
+              return React.createElement(React.Fragment, null, tipEl, helpEl);
             })(),
             // ---- Session cost breakdown popup (hover over the cost figure) ----
             // Sized exactly like the Model Garden panel and parked parallel

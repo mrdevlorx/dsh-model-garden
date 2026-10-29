@@ -50,6 +50,83 @@ export const name = 'dsh-model-garden'
 export const inject = []
 
 /**
+ * Read one plugin entry's effective configuration across DSH generations.
+ *
+ * DSH ≤0.1 kept plugin configuration in a single `settings.yaml` document and
+ * exposed it as namespaces (`settings.get(ns)`). 0.2 removed that document:
+ * configuration now lives per profile entry and the `settings` service is a
+ * form projection over entries (`describe/update/replace/mutate`). The Loader
+ * entry is therefore the authoritative source here; the remaining branches
+ * keep older installations and exotic compositions working.
+ *
+ * @param ctx - host cordis context.
+ * @param entryId - profile entry id, e.g. "llm-pi-ai".
+ * @returns the entry's config, or undefined when the profile has none.
+ */
+function entryConfig(ctx, entryId) {
+  const settings = ctx.get('settings')
+  // ≤0.1: the settings document answered by namespace, and its errors are
+  // part of that contract — a caller that cannot read configuration must fail
+  // loudly instead of degrading to "unconfigured".
+  if (settings !== undefined && typeof settings.get === 'function') return settings.get(entryId)
+  // 0.2: ConfigEditor is the documented reader for profile entry config; its
+  // composition already merges every patch layer for the entry.
+  const editor = ctx.get('configEditor')
+  if (editor !== undefined && typeof editor.configuration === 'function') {
+    try {
+      const row = editor.configuration().find((r) => r !== undefined && r !== null
+        && r.entry !== undefined
+        && (r.entry.id === entryId || (r.entry.options !== undefined && r.entry.options.id === entryId)))
+      if (row !== undefined) {
+        return {
+          ...(row.inherited !== undefined && row.inherited !== null ? row.inherited : {}),
+          ...(row.override !== undefined && row.override !== null ? row.override : {}),
+        }
+      }
+    } catch { /* fall through to the Loader */ }
+  }
+  // A plugin may not be allowed to read the Loader service (it lives on the
+  // loader's own context in most compositions), so this stays best-effort.
+  const loader = ctx.get('loader')
+  if (loader !== undefined && typeof loader.entries === 'function') {
+    try {
+      for (const row of loader.entries()) {
+        const options = row === undefined || row === null ? undefined : row.options
+        if (options !== undefined && options !== null && options.id === entryId && options.config !== undefined) return options.config
+      }
+    } catch { /* a loader that refuses inspection falls through */ }
+  }
+  // Last resort: the form descriptor (secret-role fields are redacted).
+  if (settings !== undefined && typeof settings.describe === 'function') {
+    try {
+      const row = settings.describe().find((d) => d !== undefined && d !== null && d.ns === entryId)
+      if (row !== undefined) return row.value
+    } catch { /* no live forms in this composition */ }
+  }
+  return undefined
+}
+
+/**
+ * The `providers` map of the `llm-pi-ai` entry, or `{}` when the profile
+ * configures no pi-ai routes (where 0.1 code returned the settings section).
+ *
+ * @param ctx - host cordis context.
+ * @returns provider id -> route config.
+ */
+function piAiProviders(ctx) {
+  let section
+  try {
+    section = entryConfig(ctx, 'llm-pi-ai')
+  } catch {
+    // The read-only surfaces (catalog, detail card, gateway probe) keep
+    // answering with "no routes" rather than failing the whole request.
+    return {}
+  }
+  const providers = section !== null && typeof section === 'object' ? section.providers : undefined
+  return providers !== null && typeof providers === 'object' ? providers : {}
+}
+
+/**
  * Provider locality from the configured baseURL (`llm-pi-ai` settings
  * section). Providers without an explicit baseURL run on their catalog
  * default endpoint, i.e. the public cloud — not local.
@@ -139,17 +216,9 @@ function credentialExposedInCleartext(baseURL) {
   return !maySendCredential(baseURL)
 }
 
-/** Read provider -> baseURL from the llm-pi-ai settings section. */
-function providerBaseUrls(settings) {
+/** Read provider -> baseURL from the configured llm-pi-ai routes. */
+function providerBaseUrls(providers) {
   const map = {}
-  if (settings === undefined) return map
-  let section
-  try {
-    section = settings.get('llm-pi-ai')
-  } catch {
-    return map
-  }
-  const providers = section && typeof section === 'object' ? section.providers : undefined
   if (providers && typeof providers === 'object') {
     for (const id in providers) {
       const p = providers[id]
@@ -169,16 +238,8 @@ function providerBaseUrls(settings) {
  * resolves it through the SAME credential chain as the refresh pass
  * (credentials service first, process env as fallback).
  */
-function providerGateways(settings) {
+function providerGateways(providers) {
   const out = {}
-  if (settings === undefined) return out
-  let section
-  try {
-    section = settings.get('llm-pi-ai')
-  } catch {
-    return out
-  }
-  const providers = section && typeof section === 'object' ? section.providers : undefined
   if (providers && typeof providers === 'object') {
     for (const id in providers) {
       const p = providers[id]
@@ -287,15 +348,67 @@ async function piAiCatalog(ctx) {
   return loadPiAiCatalog(ctx.baseUrl)
 }
 
-/** One full refresh pass; returns the result rows for the client. */
-async function runModelRefresh(ctx) {
+/**
+ * Persist one provider route's refreshed `models` list.
+ *
+ * DSH ≤0.1 deep-merged into the settings document. 0.2 has no such document:
+ * the routes are ordinary config of the `llm-pi-ai` profile entry, so the
+ * merge has to be explicit — read the entry's current config, replace ONLY
+ * that route's `models`, and let ConfigEditor persist and reconcile it. A
+ * wholesale `settings.update('llm-pi-ai', { providers })` merges shallowly and
+ * would drop every other route.
+ *
+ * @param ctx - host cordis context.
+ * @param providerId - the route whose model set changed.
+ * @param models - the merged model entries.
+ */
+async function writeProviderModels(ctx, providerId, models) {
+  const editor = ctx.get('configEditor')
+  if (editor !== undefined && typeof editor.edit === 'function' && typeof editor.configuration === 'function') {
+    const row = editor.configuration().find((r) => r !== undefined && r !== null
+      && r.entry !== undefined
+      && (r.entry.id === 'llm-pi-ai' || (r.entry.options !== undefined && r.entry.options.id === 'llm-pi-ai')))
+    if (row !== undefined) {
+      await editor.edit(row.entry, (current) => {
+        const base = current !== null && typeof current === 'object' ? current : {}
+        const providers = base.providers !== null && typeof base.providers === 'object' ? { ...base.providers } : {}
+        const existing = providers[providerId] !== null && typeof providers[providerId] === 'object' ? providers[providerId] : {}
+        providers[providerId] = { ...existing, models }
+        return { ...base, providers }
+      })
+      return
+    }
+  }
   const settings = ctx.get('settings')
-  if (settings === undefined) return { error: 'settings service unavailable' }
-  const section = settings.get('llm-pi-ai')
-  const providers = section && typeof section === 'object' && section.providers && typeof section.providers === 'object'
+  if (settings !== undefined && typeof settings.update === 'function' && typeof settings.get === 'function') {
+    await settings.update('llm-pi-ai', { providers: { [providerId]: { models } } })
+    return
+  }
+  throw new Error('llm-pi-ai provider routes are not writable in this profile')
+}
+
+/** One full refresh pass; returns the result rows for the client. */
+/**
+ * One refresh pass.
+ *
+ * @param ctx - host cordis context.
+ * @param options - `dropRemoved: false` keeps configured ids the live API did
+ *   not list (the automatic background pass only ever adds models; deleting
+ *   configuration stays an explicit, user-confirmed action).
+ * @returns the per-provider rows, or `{ error }`.
+ */
+async function runModelRefresh(ctx, options) {
+  const dropRemoved = options === undefined || options.dropRemoved !== false
+  const section = entryConfig(ctx, 'llm-pi-ai')
+  const providers = section !== null && typeof section === 'object'
+    && section.providers !== null && typeof section.providers === 'object'
     ? section.providers
     : {}
-  if (Object.keys(providers).length === 0) return { error: 'no llm-pi-ai provider routes configured' }
+  if (Object.keys(providers).length === 0) {
+    // Fresh installs have no provider routes yet: this is not a failure, so
+    // answer with an empty, readable summary instead of an HTTP 500.
+    return { results: [], summary: 'no llm-pi-ai provider routes configured' }
+  }
   // The dynamic import behind piAiCatalog has no deadline of its own; a wedged
   // module load would otherwise stall the whole pass until the hard cap, and
   // the pass is what the refresh button waits on. Without the catalog we still
@@ -311,9 +424,8 @@ async function runModelRefresh(ctx) {
   const results = await refreshAll({
     providers,
     existingModels: (id) => {
-      const current = settings.get('llm-pi-ai')
-      const route = current && typeof current === 'object' ? current.providers : undefined
-      const models = route && route[id] && typeof route[id] === 'object' ? route[id].models : undefined
+      const route = piAiProviders(ctx)
+      const models = route[id] !== null && typeof route[id] === 'object' ? route[id].models : undefined
       return Array.isArray(models) ? models : undefined
     },
     catalogBaseUrls: catalog === null ? new Map() : catalog.baseUrls,
@@ -328,14 +440,13 @@ async function runModelRefresh(ctx) {
       return process.env[ref]
     },
     timeoutMs: REFRESH_TIMEOUT,
+    dropRemoved,
   })
   const writeErrors = {}
   for (const result of results) {
     if (!result.ok || !result.changed) continue
     try {
-      await settings.update('llm-pi-ai', {
-        providers: { [result.id]: { models: result.models } },
-      })
+      await writeProviderModels(ctx, result.id, result.models)
       // The route's model set changed: drop its cached detail cards so a
       // removed model stops answering and a newly added one builds fresh.
       invalidateDetailFor(result.id)
@@ -613,6 +724,33 @@ function guardRequest(ctx, req, res) {
   return false
 }
 
+/**
+ * Read a small JSON body. Mirrors the pin route's resilience contract: hard
+ * size cap, tolerant parse, `null` for malformed JSON.
+ *
+ * @param req - the incoming request.
+ * @param cap - maximum accepted characters.
+ * @returns the parsed object, or null when the body was not a JSON object.
+ */
+function readJsonBody(req, cap) {
+  if (typeof req.setEncoding !== 'function') return Promise.resolve({})
+  return new Promise((resolve, reject) => {
+    let size = 0
+    let raw = ''
+    req.setEncoding('utf8')
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > cap) { reject(new Error('body too large')); req.destroy() }
+      raw += chunk
+    })
+    req.on('end', () => {
+      if (raw.trim() === '') return resolve({})
+      try { resolve(JSON.parse(raw)) } catch { resolve(null) }
+    })
+    req.on('error', reject)
+  })
+}
+
 function writeJson(res, status, body) {
   // The client can go away mid-response (a slow catalog build, a closed
   // panel); writing to a dead socket throws and would surface as an opaque
@@ -693,13 +831,13 @@ async function mapLimit(items, limit, worker) {
   await Promise.all(runners)
 }
 
-async function buildCatalog(llm, settings) {
+async function buildCatalog(llm, providerRoutes) {
   const out = {}
   // Mirrored internal routes (the vision toolkit duplicates every provider as
   // "vision-toolkit-<provider>" for its own routing) are skipped: they are
   // hidden in the picker, so resolving their ~180 models would be pure waste.
   const SKIP_PREFIXES = ['vision-toolkit-']
-  const baseUrls = providerBaseUrls(settings)
+  const baseUrls = providerBaseUrls(providerRoutes)
   const providers = Array.isArray(llm.listProviders()) ? llm.listProviders() : []
   // Bounded on BOTH axes: 4 providers at a time, 8 model lookups per provider.
   await mapLimit(providers, 4, async (p) => {
@@ -731,11 +869,11 @@ async function buildCatalog(llm, settings) {
   return out
 }
 
-async function getCatalog(llm, settings) {
+async function getCatalog(llm, providerRoutes) {
   if (catalogCache !== null && (Date.now() - catalogAt) < CATALOG_TTL) return catalogCache
   if (catalogInflight !== null) return catalogInflight
   const generation = catalogGeneration
-  const build = buildCatalog(llm, settings)
+  const build = buildCatalog(llm, providerRoutes)
   catalogInflight = Promise.race([
     build,
     new Promise((resolve) => {
@@ -908,7 +1046,7 @@ async function buildModelDetail(ctx, providerId, modelId) {
   const inflight = detailInflight.get(key)
   if (inflight !== undefined) return inflight
   const run = (async () => {
-    const baseUrls = providerBaseUrls(ctx.get('settings'))
+    const baseUrls = providerBaseUrls(piAiProviders(ctx))
     const local = isLocalBaseUrl(baseUrls[providerId])
     // 1. Adapter: what the route physically runs with.
     let adapter = null
@@ -941,7 +1079,7 @@ async function buildModelDetail(ctx, providerId, modelId) {
       if (inventory === undefined || (Date.now() - inventory.at) > DETAIL_GATEWAY_TIMEOUT_REUSE) {
         const resolveKey = makeResolveKey(ctx)
         const probed = await raceDeadline(
-          queryGatewayModels(baseUrls[providerId], await resolveKey(providerGateways(ctx.get('settings'))[providerId]?.apiKeyEnv)),
+          queryGatewayModels(baseUrls[providerId], await resolveKey(providerGateways(piAiProviders(ctx))[providerId]?.apiKeyEnv)),
           SERVER_MODELS_TIMEOUT,
         )
         if (probed && probed.rawById !== undefined) {
@@ -995,6 +1133,8 @@ function invalidateDetailFor(providerId) {
 // cold resume). Main sessions never carry that stamp and keep their own model.
 
 const SUBAGENT_SETTINGS_NS = 'model-garden'
+// 0.2: the pin is config of this plugin's own profile entry.
+const OWN_ENTRY_ID = 'model-garden'
 let subagentOverride = null
 let subagentWired = false
 const SUBAGENT_OVERRIDE_FLAG = Symbol('model-garden.subagentOverride')
@@ -1021,17 +1161,28 @@ function modelGardenSettingsSchema() {
  */
 function installSubagentSettings(ctx) {
   const settings = ctx.get('settings')
-  if (settings === undefined || typeof settings.installSection !== 'function') return
-  const entry = { subagentModel: null }
-  // installSection hands the resolved value (already schema-normalized) to
-  // setSource; normalize again defensively — a legacy write paths may carry
-  // alias-shaped keys.
-  settings.installSection(ctx, SUBAGENT_SETTINGS_NS, modelGardenSettingsSchema(), entry, {
-    setSource: (current) => {
-      subagentOverride = normalizeSubagentOverride(current && typeof current === 'object' ? current.subagentModel : undefined)
-    },
-    onChange: () => {},
-  })
+  // DSH ≤0.1: the plugin owned a settings.yaml namespace.
+  if (settings !== undefined && typeof settings.installSection === 'function') {
+    const entry = { subagentModel: null }
+    // installSection hands the resolved value (already schema-normalized) to
+    // setSource; normalize again defensively — legacy write paths may carry
+    // alias-shaped keys.
+    settings.installSection(ctx, SUBAGENT_SETTINGS_NS, modelGardenSettingsSchema(), entry, {
+      setSource: (current) => {
+        subagentOverride = normalizeSubagentOverride(current && typeof current === 'object' ? current.subagentModel : undefined)
+      },
+      onChange: () => {},
+    })
+    return
+  }
+  // DSH 0.2 removed the settings document and has no namespace for a plugin
+  // that never declared one. The pin is ordinary config of this plugin's own
+  // profile entry instead; seed the in-memory value from it so a restart or
+  // HMR reload resumes the persisted choice.
+  const own = entryConfig(ctx, OWN_ENTRY_ID)
+  if (own !== null && typeof own === 'object' && own.subagentModel !== undefined) {
+    subagentOverride = normalizeSubagentOverride(own.subagentModel)
+  }
 }
 
 /**
@@ -1098,10 +1249,28 @@ function applySubagentOverrideWrap(ctx) {
  * state while the section stays authoritative.
  */
 async function persistSubagentOverride(ctx, value) {
+  const next = value === null ? null : { ...value }
+  // DSH 0.2: ConfigEditor is the sanctioned writer for ordinary plugin
+  // config — it validates the candidate, persists it into the profile patch
+  // and reconciles the Loader, which is exactly the "DSH's own mechanism"
+  // the ≤0.1 settings section provided.
+  const editor = ctx.get('configEditor')
+  if (editor !== undefined && typeof editor.edit === 'function' && typeof editor.configuration === 'function') {
+    const row = editor.configuration().find((r) => r !== undefined && r !== null
+      && r.entry !== undefined
+      && (r.entry.id === OWN_ENTRY_ID || (r.entry.options !== undefined && r.entry.options.id === OWN_ENTRY_ID)))
+    if (row !== undefined) {
+      await editor.edit(row.entry, (current) => ({
+        ...(current !== null && typeof current === 'object' ? current : {}),
+        subagentModel: next,
+      }))
+      subagentOverride = value
+      return true
+    }
+  }
   const settings = ctx.get('settings')
-  if (settings !== undefined && typeof settings.update === 'function') {
-    await settings.update(SUBAGENT_SETTINGS_NS, { subagentModel: value === null ? null : { ...value } })
-    // installSection's setSource hook re-read the resolved value already.
+  if (settings !== undefined && typeof settings.update === 'function' && typeof settings.get === 'function') {
+    await settings.update(SUBAGENT_SETTINGS_NS, { subagentModel: next })
     return true
   }
   subagentOverride = value
@@ -1137,7 +1306,13 @@ export function _resetDetailStateForTests() {
  *
  * @param ctx - host cordis context.
  */
-export function apply(ctx) {
+export function apply(ctx, config) {
+  // A profile entry config carrying `subagentModel` is the 0.2 persistence
+  // channel; it wins over the Loader read because it is the value this very
+  // activation was handed.
+  if (config !== null && typeof config === 'object' && config.subagentModel !== undefined) {
+    subagentOverride = normalizeSubagentOverride(config.subagentModel)
+  }
   let mounted = false
   // One refresh at a time: the picker button disables itself, this is the
   // server-side backstop (409 for a second concurrent click).
@@ -1192,7 +1367,7 @@ export function apply(ctx) {
         try {
           const llm = ctx.get('llm')
           if (llm === undefined) return writeJson(res, 503, { error: 'llm service unavailable' })
-          getCatalog(llm, ctx.get('settings'))
+          getCatalog(llm, piAiProviders(ctx))
             .then((map) => writeJson(res, 200, map))
             .catch((err) => writeJson(res, 500, { error: String(err && err.message ? err.message : err) }))
         } catch (err) {
@@ -1243,7 +1418,7 @@ export function apply(ctx) {
             } catch { /* fall through to the environment */ }
             return process.env[ref]
           }
-          const gw = providerGateways(ctx.get('settings'))
+          const gw = providerGateways(piAiProviders(ctx))
           const providers = {}
           await Promise.all(Object.keys(gw).map(async (id) => {
             const info = await queryGatewayModels(gw[id].baseURL, await resolveKey(gw[id].apiKeyEnv))
@@ -1271,6 +1446,13 @@ export function apply(ctx) {
       path: '/model-garden/refresh-models',
       handler: async (req, res) => {
         if (guardRequest(ctx, req, res)) return
+        // `keepRemoved` (query or JSON body) is the automatic pass's contract:
+        // it adds newly served models but never drops configured ones.
+        let keepRemoved = false
+        try {
+          const url = new URL(req.url ?? '', 'http://127.0.0.1')
+          keepRemoved = url.searchParams.get('keepRemoved') === '1'
+        } catch { /* treat as absent */ }
         // Explicit user action (the picker's refresh button): re-sync every
         // configured provider route from its live API and write the merged
         // model lists back through the settings service.
@@ -1285,7 +1467,7 @@ export function apply(ctx) {
         // resolves — never rejects — with a readable { error } verdict, which
         // keeps the race below total.
         const pass = Promise.resolve()
-          .then(() => runModelRefresh(ctx))
+          .then(() => runModelRefresh(ctx, { dropRemoved: keepRemoved !== true }))
           .then((out) => out, (err) => ({ error: String(err && err.message ? err.message : err) }))
         refreshInflight = pass
         pass.then(() => { if (refreshInflight === pass) refreshInflight = null })
@@ -1324,6 +1506,53 @@ export function apply(ctx) {
         return writeJson(res, 200, outcome)
       },
     }), 'model-garden: /model-garden/refresh-models route')
+
+    // Remove ONE configured model from its route (the picker's red cross on a
+    // deprecated row). Explicit, user-confirmed; writes through the same
+    // ConfigEditor path the refresh uses, so the route keeps every other field.
+    ctx.effect(() => webServer.register({
+      kind: 'exact',
+      path: '/model-garden/remove-model',
+      handler: async (req, res) => {
+        if (guardRequest(ctx, req, res)) return
+        if (req.method !== 'POST') {
+          res.writeHead(405, { allow: 'POST', 'content-type': 'application/json; charset=utf-8' })
+          return res.end(JSON.stringify({ error: 'POST only' }))
+        }
+        try {
+          const body = await readJsonBody(req, 10_000)
+          if (body === null || typeof body !== 'object') {
+            return writeJson(res, 400, { error: 'body must be a JSON object' })
+          }
+          const provider = typeof body.provider === 'string' ? body.provider : ''
+          const model = typeof body.model === 'string' ? body.model : ''
+          if (provider === '' || model === '') {
+            return writeJson(res, 400, { error: 'provider and model are required' })
+          }
+          const route = piAiProviders(ctx)[provider]
+          const models = route !== null && typeof route === 'object' && Array.isArray(route.models)
+            ? route.models
+            : undefined
+          if (models === undefined) {
+            return writeJson(res, 404, { error: 'provider route is not configured in this profile' })
+          }
+          const kept = models.filter((entry) => {
+            if (entry === null || entry === undefined) return true
+            if (typeof entry === 'string') return entry !== model
+            return entry.id !== model
+          })
+          if (kept.length === models.length) {
+            return writeJson(res, 404, { error: 'model is not configured on this route' })
+          }
+          await writeProviderModels(ctx, provider, kept)
+          invalidateDetailFor(provider)
+          invalidateCatalogCache()
+          writeJson(res, 200, { removed: true, provider, model, remaining: kept.length })
+        } catch (err) {
+          writeJson(res, 500, { error: String(err && err.message ? err.message : err) })
+        }
+      },
+    }), 'model-garden: /model-garden/remove-model route')
     ctx.effect(() => webServer.register({
       kind: 'exact',
       path: '/model-garden/model-detail',

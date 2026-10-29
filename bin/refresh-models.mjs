@@ -7,13 +7,21 @@
  * Nutzung:
  *   node bin/refresh-models.mjs [--dry-run] [--keep-removed]
  *        [--provider <id>] [--timeout-ms <ms>] [--home <dsh-home>]
+ *        [--profile <name>] [--settings <path>]
  *
  * Schreibt comment-preserving: das YAML-Dokument wird geparst und nur der
  * Blatt-Pfad `llm-pi-ai.providers.<id>.models` ersetzt (Arrays setzen
  * immer komplett). Credentials stammen aus $DSH_HOME/.credentials.yaml,
  * die Prozess-Umgebung überlagert (wie dsh-credentials-local).
+ *
+ * Zieldokument: DSH ≤0.1 las die Sektionen aus `settings.yaml`. Ab 0.2 gibt
+ * es diese Datei nicht mehr — die Routen sind Config des Profil-Eintrags
+ * `llm-pi-ai` im Cordis-Profil-Patch (`profiles/<name>/cordis.patch.yml`),
+ * entweder als Zeilen-Patch (`- id: llm-pi-ai`) oder in einer `insert:`-Liste.
+ * Beide Formen werden gelesen und an Ort und Stelle zurückgeschrieben; die
+ * YAML-Kommentare des Patches bleiben erhalten.
  */
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -30,7 +38,82 @@ const option = (name, fallback) => {
 const home = resolve(
 	option("--home", process.env.DSH_HOME ?? join(process.env.HOME, ".dsh")),
 );
-const settingsPath = join(home, "settings.yaml");
+const legacySettingsPath = join(home, "settings.yaml");
+
+/**
+ * Pick the YAML document that holds this installation's configuration.
+ * An explicit path wins, then a legacy `settings.yaml`, then the active
+ * profile's Cordis patch. Without an explicit profile name the profile is
+ * inferred when exactly one of them mounts this plugin.
+ * @returns {Promise<{ path: string, kind: "settings" | "patch" }>}
+ */
+async function resolveDocumentPath() {
+	const explicit = option("--settings", undefined);
+	if (explicit !== undefined) {
+		const path = resolve(explicit);
+		await readFile(path, "utf8");
+		return { path, kind: path.endsWith("cordis.patch.yml") ? "patch" : "settings" };
+	}
+	try {
+		await readFile(legacySettingsPath, "utf8");
+		return { path: legacySettingsPath, kind: "settings" };
+	} catch { /* 0.2 removed the document */ }
+	const named = option("--profile", process.env.DSH_PROFILE);
+	if (named !== undefined) {
+		return { path: join(home, "profiles", named, "cordis.patch.yml"), kind: "patch" };
+	}
+	const candidates = [];
+	for (const entry of await readdir(join(home, "profiles")).catch(() => [])) {
+		const manifest = join(home, "profiles", entry, "package.json");
+		const parsed = JSON.parse(await readFile(manifest, "utf8").catch(() => "{}"));
+		const bundles = parsed?.dsh?.profile?.bundles ?? [];
+		const patch = await readFile(join(home, "profiles", entry, "cordis.patch.yml"), "utf8").catch(() => undefined);
+		if (bundles.includes("dsh-model-garden") || (patch !== undefined && patch.includes("dsh-model-garden"))) {
+			candidates.push(entry);
+		}
+	}
+	if (candidates.length !== 1) {
+		console.error(
+			`model-garden: kein settings.yaml (DSH ≥0.2) und kein eindeutiges Profil`
+			+ (candidates.length > 1 ? ` — Kandidaten: ${candidates.join(", ")}` : "")
+			+ "; bitte --profile <name> angeben",
+		);
+		process.exit(1);
+	}
+	return { path: join(home, "profiles", candidates[0], "cordis.patch.yml"), kind: "patch" };
+}
+
+/**
+ * Locate the `llm-pi-ai` provider routes inside either document shape.
+ * @param document - parsed YAML document.
+ * @returns the document path to the providers map.
+ */
+function locateProvidersPath(document) {
+	const root = document.contents;
+	if (root === undefined || root === null) return undefined;
+	const isSequence = root.items !== undefined && root.items[0] !== undefined && root.items[0].key === undefined;
+	if (!isSequence) return ["llm-pi-ai", "providers"];
+	// A patch list: later rows win, so scan from the end.
+	for (let index = root.items.length - 1; index >= 0; index--) {
+		const item = root.items[index];
+		if (item === undefined || item === null || typeof item.get !== "function") continue;
+		const rowId = item.get("id", true);
+		if (rowId !== undefined && rowId.value === "llm-pi-ai" && item.get("config", true) !== undefined) {
+			return [index, "config", "providers"];
+		}
+		const insert = item.get("insert", true);
+		if (insert === undefined || insert === null || insert.items === undefined) continue;
+		for (let nested = insert.items.length - 1; nested >= 0; nested--) {
+			const entry = insert.items[nested];
+			if (entry === undefined || entry === null || typeof entry.get !== "function") continue;
+			const entryId = entry.get("id", true);
+			if (entryId !== undefined && entryId.value === "llm-pi-ai" && entry.get("config", true) !== undefined) {
+				return [index, "insert", nested, "config", "providers"];
+			}
+		}
+	}
+	return undefined;
+}
 
 // The project ships no node_modules of its own; both the YAML toolkit and
 // pi-ai resolve through dsh's flat fallback tree (~/.dsh/profiles/node_modules).
@@ -46,26 +129,37 @@ const providers = (() => {
 	return selected.length > 0 ? new Set(selected) : undefined;
 })();
 
+const target = await resolveDocumentPath();
+const settingsPath = target.path;
 const raw = await readFile(settingsPath, "utf8");
 const document = parseDocument(raw);
 if (document.errors.length > 0) {
 	console.error(`model-garden: ${settingsPath} ist kein gültiges YAML`);
 	process.exit(1);
 }
-const routes = document.getIn(["llm-pi-ai", "providers"], true);
+const providersPath = locateProvidersPath(document);
+const routes = providersPath === undefined ? undefined : document.getIn(providersPath, true);
 if (routes === undefined || routes.items === undefined) {
-	console.error("model-garden: settings.yaml hat keinen llm-pi-ai.providers-Abschnitt");
+	console.error(`model-garden: ${settingsPath} hat keinen llm-pi-ai.providers-Abschnitt`);
 	process.exit(1);
 }
+const routePath = (providerId) => [...providersPath, providerId, "models"];
 
-/** Credential-Quellen: Prozess-Umgebung überlagert .credentials.yaml. */
+/** Credential-Quellen: Prozess-Umgebung überlagert .credentials.yaml.
+ *  Der YAML-Wurzelpfad ist `refs.<API_KEY_ENV>` — `getIn([ref])` ohne den
+ *  `refs.`-Vorspann würde für JEDEN Ref stillschweigend `undefined`
+ *  liefern, der Refresh würde den Authorization-Header weglassen und die
+ *  API antwortet mit dem ungefilterten Public-Katalog (für /zen/v1 sind
+ *  das 85 statt 48 Modelle — exakt der Bug, der die Free-Modelle
+ *  vermischt, weil deepseek-v4.1-flash-free im Subscription-Set steckt
+ *  und im Public-Set nicht). */
 const credentialDocument = await readFile(join(home, ".credentials.yaml"), "utf8")
 	.then((text) => parseDocument(text))
 	.catch(() => undefined);
 const resolveKey = async (ref) =>
 	process.env[ref] ??
-	credentialDocument?.getIn([ref], true)?.toJSON?.() ??
-	credentialDocument?.get(ref);
+	credentialDocument?.getIn(["refs", ref], true)?.toJSON?.() ??
+	credentialDocument?.getIn(["refs", ref]);
 
 /** pi-ai catalog via the shared loader (flat fallback tree, exports-safe). */
 const piAi = await loadPiAiCatalog(home);
@@ -74,7 +168,7 @@ const catalogModelIds = new Set(piAi?.openRouterIds ?? []);
 
 const configured = routes.toJSON();
 const existingModels = (providerId) => {
-	const value = document.getIn(["llm-pi-ai", "providers", providerId, "models"], true);
+	const value = document.getIn(routePath(providerId), true);
 	if (value === undefined) return undefined;
 	return value.toJSON();
 };
@@ -123,7 +217,7 @@ if (dryRun) process.exit(0);
 let changed = 0;
 for (const result of results) {
 	if (!result.ok || !result.changed) continue;
-	document.setIn(["llm-pi-ai", "providers", result.id, "models"], result.models);
+	document.setIn(routePath(result.id), result.models);
 	changed++;
 }
 if (changed === 0) {

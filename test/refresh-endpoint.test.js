@@ -124,15 +124,18 @@ test("refresh route rejects non-POST with 405 and allow header", async () => {
   assert.equal(res.headers.allow, "POST");
 });
 
-test("refresh without provider routes reports a service error", async () => {
+test("refresh without provider routes reports an empty summary, not an error", async () => {
   const { ctx, routes } = makeCtx({ providers: {}, fetchImpl: async () => { throw new Error("no"); } });
   apply(ctx);
   const handler = routes.get("/model-garden/refresh-models");
   const res = responseSpy();
   await handler({ method: "POST" }, res);
-  assert.equal(res.status, 500);
+  // A brand-new profile has no llm-pi-ai routes yet: that is a normal state,
+  // not a server failure (the fresh-install smoke test showed a 500 here).
+  assert.equal(res.status, 200);
   const out = JSON.parse(res.body);
-  assert.match(out.error, /no llm-pi-ai provider routes configured/);
+  assert.deepEqual(out.results, []);
+  assert.match(out.summary, /no llm-pi-ai provider routes configured/);
 });
 
 test("server-models resolves local gateway keys via the credentials service", async () => {
