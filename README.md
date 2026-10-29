@@ -2,11 +2,9 @@
 
 A **model picker for the DeepSeek Harness Web UI** (`dsh web`) that replaces the native composer model seat with a table-style picker: searchable, sortable, filterable down to model capabilities, with prices, live per-task cost, a rich detail card and a pinned default model for every sub-agent.
 
-![status](https://img.shields.io/badge/status-stable-brightgreen) [![npm](https://img.shields.io/npm/v/dsh-model-garden)](https://www.npmjs.com/package/dsh-model-garden) ![npm next](https://img.shields.io/badge/npm-1.0.0%20pending-orange) ![license](https://img.shields.io/badge/license-MIT-blue)
+![status](https://img.shields.io/badge/status-stable-brightgreen) [![npm](https://img.shields.io/npm/v/dsh-model-garden)](https://www.npmjs.com/package/dsh-model-garden) ![license](https://img.shields.io/badge/license-MIT-blue)
 
 <img src="https://raw.githubusercontent.com/mrdevlorx/dsh-model-garden/main/docs/github.png" alt="Model Garden: the faceted filter sheet, the model list with live cost, and the detail card with the sub-agents toggle" width="100%">
-
-> **Heads-up — npm is still on the previous release.** The published package is **0.7.1**; version **1.0.0** (everything documented below) is finished and smoke-tested against DSH 0.2.1-rc.5 and will be published as soon as the registry credentials allow it. Until then, install the current code straight from GitHub — see [Install from GitHub](#from-github-until-100-lands-on-npm).
 
 ## Why
 
@@ -108,9 +106,9 @@ Then restart the DSH server and hard-refresh the browser (`Cmd/Ctrl+Shift+R`).
 
 > Upgrading from a manual install? Remove the old `model-garden` dependency and any manual `- insert:` row for it from your profile's `cordis.patch.yml` first — otherwise it mounts twice.
 
-### From GitHub (until 1.0.0 lands on npm)
+### From GitHub (latest `main`)
 
-The CLI accepts a git spec exactly like a registry package — same bundle reconciliation, no manual patch edit:
+The CLI also accepts a git spec — same bundle reconciliation, no manual patch edit. Useful to run an unreleased commit:
 
 ```sh
 dsh plugin --profile <profile> add github:mrdevlorx/dsh-model-garden
